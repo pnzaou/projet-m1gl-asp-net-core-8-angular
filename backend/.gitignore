@@ -1,0 +1,17 @@
+# Build outputs
+bin/
+obj/
+
+# Logs
+logs/
+
+# Secrets (ne jamais committer)
+appsettings.Production.json
+appsettings.Development.json
+
+# EF Core migrations (optionnel — retirer si vous voulez les versionner)
+# Migrations/
+
+# Rider / VS
+.vs/
+*.user

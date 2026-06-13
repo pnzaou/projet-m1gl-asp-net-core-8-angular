@@ -1,0 +1,49 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: usermgmt_db
+    environment:
+      POSTGRES_DB: usermgmt
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: usermgmt_api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=usermgmt;Username=postgres;Password=secret"
+      Jwt__Key: "super-secret-key-minimum-32-characters!!"
+      Jwt__Issuer: "usermgmt-api"
+      Jwt__Audience: "usermgmt-client"
+      ASPNETCORE_ENVIRONMENT: Production
+    ports:
+      - "5000:8080"
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: usermgmt_web
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+
+volumes:
+  pg_data:

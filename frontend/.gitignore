@@ -1,0 +1,12 @@
+# Dépendances
+node_modules/
+
+# Build
+dist/
+.angular/
+
+# Environnement (si vous mettez des clés dedans)
+src/environments/environment.prod.ts
+
+# Cache
+.cache/
