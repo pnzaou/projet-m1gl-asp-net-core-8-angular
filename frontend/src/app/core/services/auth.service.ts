@@ -10,7 +10,8 @@ export class AuthService {
   private _currentUser = signal<User | null>(this.loadUser());
   currentUser = this._currentUser.asReadonly();
   isLoggedIn = computed(() => !!this._currentUser());
-  isAdmin = computed(() => this._currentUser()?.role === 'Admin');
+  isAdmin = computed(() => ['Admin', 'SuperAdmin'].includes(this._currentUser()?.role ?? ''));
+  isSuperAdmin = computed(() => this._currentUser()?.role === 'SuperAdmin');
 
   private readonly API = `${environment.apiUrl}/auth`;
 

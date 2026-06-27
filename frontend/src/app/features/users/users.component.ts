@@ -11,8 +11,8 @@ import { User } from '../../shared/models/user.model';
   template: `
 <div class="page">
   <div class="page-header">
-    <h1>👥 Utilisateurs</h1>
-    <button class="btn btn-primary" (click)="openModal('create')">+ Nouvel utilisateur</button>
+    <h1>Utilisateurs</h1>
+    <button class="btn btn-primary" (click)="openModal('create')"><i class="fa-solid fa-plus"></i> Nouvel utilisateur</button>
   </div>
 
   <!-- Filtres -->
@@ -60,11 +60,11 @@ import { User } from '../../shared/models/user.model';
             <td>{{ user.createdAt | date:'dd/MM/yyyy' }}</td>
             <td>
               <div class="actions">
-                <button class="btn-icon" title="Modifier" (click)="openModal('edit', user)">✏️</button>
+                <button class="btn-icon" title="Modifier" (click)="openModal('edit', user)"><i class="fa-solid fa-pen"></i></button>
                 <button class="btn-icon" title="Toggle actif" (click)="toggleActive(user)">
-                  {{ user.isActive ? '🚫' : '✅' }}
+                  <i class="fa-solid" [class.fa-ban]="user.isActive" [class.fa-circle-check]="!user.isActive"></i>
                 </button>
-                <button class="btn-icon btn-danger" title="Supprimer" (click)="deleteTarget.set(user)">🗑️</button>
+                <button class="btn-icon btn-danger" title="Supprimer" (click)="deleteTarget.set(user)"><i class="fa-solid fa-trash"></i></button>
               </div>
             </td>
           </tr>
@@ -92,8 +92,8 @@ import { User } from '../../shared/models/user.model';
   <div class="modal-overlay" (click)="modalMode.set(null)">
     <div class="modal" (click)="$event.stopPropagation()">
       <div class="modal-header">
-        <h2>{{ modalMode() === 'create' ? 'Nouvel utilisateur' : 'Modifier l\'utilisateur' }}</h2>
-        <button class="modal-close" (click)="modalMode.set(null)">✕</button>
+        <h2>{{ modalTitle() }}</h2>
+        <button class="modal-close" (click)="modalMode.set(null)"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <form [formGroup]="form" (ngSubmit)="onSubmit()">
         @if (formError()) { <div class="alert alert-error">{{ formError() }}</div> }
@@ -329,6 +329,8 @@ export class UsersComponent implements OnInit {
     for (let i = Math.max(1, cur - 2); i <= Math.min(total, cur + 2); i++) pages.push(i);
     return pages;
   }
+
+  modalTitle() { return this.modalMode() === 'create' ? 'Nouvel utilisateur' : "Modifier l'utilisateur"; }
 
   initials(u: User) { return `${u.firstName[0]}${u.lastName[0]}`.toUpperCase(); }
 }

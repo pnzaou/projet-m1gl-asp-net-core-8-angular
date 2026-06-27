@@ -26,3 +26,15 @@ public record SetRoleDto(string Role);
 
 // ── Pagination ────────────────────────────────────────────────────────────
 public record PagedResult<T>(IEnumerable<T> Items, int TotalCount, int Page, int PageSize);
+
+// ── Mémoire ───────────────────────────────────────────────────────────────
+public record CreateMemoireDto(
+    string Titre, string Auteur, int Annee, string Specialite,
+    string? Description, string? Promoteur);
+
+public record MemoireDto(
+    Guid Id, string Titre, string Auteur, int Annee, string Specialite,
+    string? Description, string? Promoteur, string Statut, string? NoteRejet,
+    Guid UserId, string UserFullName, DateTime CreatedAt, DateTime? UpdatedAt);
+
+public record ReviewMemoireDto(string? NoteRejet);

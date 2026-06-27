@@ -18,7 +18,7 @@ function passwordMatch(control: AbstractControl) {
 <div class="auth-page">
   <div class="auth-card">
     <div class="auth-header">
-      <div class="auth-logo">✨</div>
+      <div class="auth-logo"><i class="fa-solid fa-book-open"></i></div>
       <h1>Créer un compte</h1>
     </div>
     <form [formGroup]="form" (ngSubmit)="onSubmit()" class="auth-form">

@@ -12,7 +12,7 @@ import { AuthService } from '../../../core/services/auth.service';
 <div class="auth-page">
   <div class="auth-card">
     <div class="auth-header">
-      <div class="auth-logo">👤</div>
+      <div class="auth-logo"><i class="fa-solid fa-book-open"></i></div>
       <h1>Connexion</h1>
       <p>Bienvenue ! Connectez-vous à votre compte.</p>
     </div>
@@ -34,7 +34,7 @@ import { AuthService } from '../../../core/services/auth.service';
           <input [type]="showPwd() ? 'text' : 'password'" formControlName="password"
             placeholder="••••••••" [class.invalid]="isInvalid('password')" />
           <button type="button" class="pwd-toggle" (click)="showPwd.set(!showPwd())">
-            {{ showPwd() ? '🙈' : '👁' }}
+            <i class="fa-solid" [class.fa-eye-slash]="showPwd()" [class.fa-eye]="!showPwd()"></i>
           </button>
         </div>
         @if (isInvalid('password')) {

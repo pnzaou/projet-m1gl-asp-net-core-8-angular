@@ -31,6 +31,15 @@ export const routes: Routes = [
         canActivate: [adminGuard],
         loadComponent: () => import('./features/admin/admin.component').then(m => m.AdminComponent)
       },
+      {
+        path: 'memoires',
+        loadComponent: () => import('./features/memoires/memoires.component').then(m => m.MemoiresComponent)
+      },
+      {
+        path: 'admin/memoires',
+        canActivate: [adminGuard],
+        loadComponent: () => import('./features/memoires/admin-memoires.component').then(m => m.AdminMemoiresComponent)
+      },
     ]
   },
   { path: '**', redirectTo: '/dashboard' }

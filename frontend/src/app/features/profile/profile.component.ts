@@ -35,7 +35,7 @@ import { UserService } from '../../core/services/user.service';
       <!-- Informations personnelles -->
       <div class="card">
         <h2>Informations personnelles</h2>
-        @if (infoSuccess()) { <div class="alert alert-success">✅ Profil mis à jour</div> }
+        @if (infoSuccess()) { <div class="alert alert-success">Profil mis à jour</div> }
         @if (infoError()) { <div class="alert alert-error">{{ infoError() }}</div> }
         <form [formGroup]="infoForm" (ngSubmit)="saveInfo()">
           <div class="form-row">
@@ -71,7 +71,7 @@ import { UserService } from '../../core/services/user.service';
       <!-- Changement de mot de passe -->
       <div class="card">
         <h2>Changer le mot de passe</h2>
-        @if (pwdSuccess()) { <div class="alert alert-success">✅ Mot de passe modifié</div> }
+        @if (pwdSuccess()) { <div class="alert alert-success">Mot de passe modifié</div> }
         @if (pwdError()) { <div class="alert alert-error">{{ pwdError() }}</div> }
         <form [formGroup]="pwdForm" (ngSubmit)="savePassword()">
           <div class="form-group">
