@@ -56,7 +56,7 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
 
     // ── Admin CRUD ────────────────────────────────────────────────────────
     [HttpGet]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<PagedResult<UserDto>>> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 10,
         [FromQuery] string search = "", [FromQuery] string role = "",
@@ -80,7 +80,7 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
     }
 
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<UserDto>> GetById(Guid id)
     {
         var user = await db.Users.FindAsync(id);
@@ -88,7 +88,7 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<UserDto>> Create(CreateUserDto dto)
     {
         if (await db.Users.AnyAsync(u => u.Email == dto.Email))
@@ -108,7 +108,7 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<ActionResult<UserDto>> Update(Guid id, UpdateUserDto dto)
     {
         var user = await db.Users.FindAsync(id);
@@ -125,7 +125,7 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
     }
 
     [HttpPatch("{id:guid}/role")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> SetRole(Guid id, SetRoleDto dto)
     {
         var user = await db.Users.FindAsync(id);
@@ -137,7 +137,7 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
     }
 
     [HttpPatch("{id:guid}/toggle-active")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> ToggleActive(Guid id)
     {
         var user = await db.Users.FindAsync(id);
@@ -149,7 +149,7 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var user = await db.Users.FindAsync(id);
@@ -160,7 +160,7 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
     }
 
     [HttpGet("stats")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> Stats()
     {
         var total = await db.Users.CountAsync();
