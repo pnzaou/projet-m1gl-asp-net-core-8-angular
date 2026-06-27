@@ -11,7 +11,7 @@ import { User, DashboardStats } from '../../shared/models/user.model';
   template: `
 <div class="page">
   <div class="page-header">
-    <h1>⚙ Administration</h1>
+    <h1><i class="fa-solid fa-gear"></i> Administration</h1>
     <p class="subtitle">Vue d'ensemble et gestion système</p>
   </div>
 
@@ -20,7 +20,7 @@ import { User, DashboardStats } from '../../shared/models/user.model';
       <h2>Statistiques système</h2>
       <div class="stats-grid">
         <div class="stat-card">
-          <div class="stat-icon blue">👥</div>
+          <div class="stat-icon blue"><i class="fa-solid fa-users"></i></div>
           <div class="stat-body">
             <div class="stat-val">{{ stats()!.total }}</div>
             <div class="stat-lbl">Utilisateurs total</div>
@@ -28,7 +28,7 @@ import { User, DashboardStats } from '../../shared/models/user.model';
           <div class="stat-bar"><div class="stat-bar-fill blue" style="width:100%"></div></div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon green">✅</div>
+          <div class="stat-icon green"><i class="fa-solid fa-circle-check"></i></div>
           <div class="stat-body">
             <div class="stat-val">{{ stats()!.active }}</div>
             <div class="stat-lbl">Actifs ({{ activePct() }}%)</div>
@@ -36,7 +36,7 @@ import { User, DashboardStats } from '../../shared/models/user.model';
           <div class="stat-bar"><div class="stat-bar-fill green" [style.width]="activePct() + '%'"></div></div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon purple">🛡</div>
+          <div class="stat-icon purple"><i class="fa-solid fa-shield-halved"></i></div>
           <div class="stat-body">
             <div class="stat-val">{{ stats()!.admins }}</div>
             <div class="stat-lbl">Admins ({{ adminPct() }}%)</div>
@@ -44,7 +44,7 @@ import { User, DashboardStats } from '../../shared/models/user.model';
           <div class="stat-bar"><div class="stat-bar-fill purple" [style.width]="adminPct() + '%'"></div></div>
         </div>
         <div class="stat-card">
-          <div class="stat-icon amber">🆕</div>
+          <div class="stat-icon amber"><i class="fa-solid fa-user-plus"></i></div>
           <div class="stat-body">
             <div class="stat-val">{{ stats()!.newToday }}</div>
             <div class="stat-lbl">Nouveaux aujourd'hui</div>
@@ -78,8 +78,8 @@ import { User, DashboardStats } from '../../shared/models/user.model';
   <div class="section">
     <h2>Actions administrateur</h2>
     <div class="admin-actions">
-      <button class="action-btn blue" (click)="refreshStats()">🔄 Actualiser les stats</button>
-      <button class="action-btn green" (click)="exportCsv()">📥 Exporter CSV</button>
+      <button class="action-btn blue" (click)="refreshStats()"><i class="fa-solid fa-rotate"></i> Actualiser les stats</button>
+      <button class="action-btn green" (click)="exportCsv()"><i class="fa-solid fa-file-export"></i> Exporter CSV</button>
     </div>
     @if (exportMsg()) { <p class="export-msg">{{ exportMsg() }}</p> }
   </div>
@@ -198,7 +198,7 @@ export class AdminComponent implements OnInit {
       const a = document.createElement('a');
       a.href = url; a.download = 'utilisateurs.csv'; a.click();
       URL.revokeObjectURL(url);
-      this.exportMsg.set('✅ Export CSV terminé !');
+      this.exportMsg.set('Export CSV terminé !');
       setTimeout(() => this.exportMsg.set(''), 3000);
     });
   }

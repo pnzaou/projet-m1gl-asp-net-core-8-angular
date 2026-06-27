@@ -78,9 +78,28 @@ try
 
     var app = builder.Build();
 
-    // ── Auto-migration au démarrage (dev) ─────────────────────────────────
+    // ── Auto-migration au démarrage ───────────────────────────────────────
     using (var scope = app.Services.CreateScope())
-        scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Database.Migrate();
+
+        // ── Seed SuperAdmin (une seule fois) ──────────────────────────────
+        if (!db.Users.Any(u => u.Role == "SuperAdmin"))
+        {
+            db.Users.Add(new Api.Models.User
+            {
+                FirstName = "Super",
+                LastName = "Admin",
+                Email = "superadmin@usermgmt.local",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("SuperAdmin@123"),
+                Role = "SuperAdmin",
+                IsActive = true
+            });
+            db.SaveChanges();
+            Log.Information("Compte SuperAdmin créé : superadmin@usermgmt.local");
+        }
+    }
 
     app.UseSerilogRequestLogging(opts =>
         opts.MessageTemplate = "HTTP {RequestMethod} {RequestPath} → {StatusCode} ({Elapsed:0.0}ms)");

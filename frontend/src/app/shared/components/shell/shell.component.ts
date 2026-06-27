@@ -11,22 +11,31 @@ import { CommonModule } from '@angular/common';
 <div class="layout">
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <span class="logo-icon">👤</span>
-      <span class="logo-text">UserMgmt</span>
+      <i class="fa-solid fa-book-open logo-icon"></i>
+      <span class="logo-text">MémoireSys</span>
     </div>
     <nav class="sidebar-nav">
       <a routerLink="/dashboard" routerLinkActive="active" class="nav-item">
-        <span>🏠</span> Dashboard
+        <i class="fa-solid fa-house"></i> Dashboard
       </a>
       <a routerLink="/profile" routerLinkActive="active" class="nav-item">
-        <span>👤</span> Mon profil
+        <i class="fa-solid fa-user"></i> Mon profil
       </a>
+      @if (!auth.isSuperAdmin()) {
+        <a routerLink="/memoires" routerLinkActive="active" class="nav-item">
+          <i class="fa-solid fa-file-lines"></i> Mes mémoires
+        </a>
+      }
       @if (auth.isAdmin()) {
+        <div class="nav-divider">Administration</div>
+        <a routerLink="/admin/memoires" routerLinkActive="active" class="nav-item">
+          <i class="fa-solid fa-clipboard-list"></i> Gestion mémoires
+        </a>
         <a routerLink="/users" routerLinkActive="active" class="nav-item">
-          <span>👥</span> Utilisateurs
+          <i class="fa-solid fa-users"></i> Utilisateurs
         </a>
         <a routerLink="/admin" routerLinkActive="active" class="nav-item">
-          <span>⚙</span> Administration
+          <i class="fa-solid fa-gear"></i> Administration
         </a>
       }
     </nav>
@@ -35,7 +44,7 @@ import { CommonModule } from '@angular/common';
         <div class="avatar-mini">{{ initials() }}</div>
         <div>
           <div class="user-name-mini">{{ auth.currentUser()?.firstName }}</div>
-          <div class="user-role-mini">{{ auth.currentUser()?.role }}</div>
+          <div class="user-role-mini" [class.super]="auth.isSuperAdmin()">{{ auth.currentUser()?.role }}</div>
         </div>
       </div>
       <button class="btn-logout" (click)="auth.logout()">Déconnexion</button>
@@ -58,7 +67,7 @@ import { CommonModule } from '@angular/common';
       font-size: 1.25rem; font-weight: 700; padding: .5rem 0 2rem;
       color: white;
     }
-    .logo-icon { font-size: 1.5rem; }
+    .logo-icon { font-size: 1.4rem; }
     .sidebar-nav { flex: 1; display: flex; flex-direction: column; gap: .25rem; }
     .nav-item {
       display: flex; align-items: center; gap: .75rem;
@@ -68,6 +77,8 @@ import { CommonModule } from '@angular/common';
     }
     .nav-item:hover { background: #334155; color: white; }
     .nav-item.active { background: #3b82f6; color: white; }
+    .nav-item i { width: 1rem; text-align: center; font-size: .9rem; flex-shrink: 0; }
+    .nav-divider { font-size: .7rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .08em; padding: .75rem 1rem .25rem; }
     .sidebar-footer { border-top: 1px solid #334155; padding-top: 1rem; }
     .user-info-mini { display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem; }
     .avatar-mini {
@@ -77,6 +88,7 @@ import { CommonModule } from '@angular/common';
     }
     .user-name-mini { font-size: .85rem; font-weight: 600; color: white; }
     .user-role-mini { font-size: .75rem; color: #64748b; }
+    .user-role-mini.super { color: #f59e0b; font-weight: 700; }
     .btn-logout {
       width: 100%; padding: .5rem; background: #ef4444;
       color: white; border: none; border-radius: .375rem; cursor: pointer; font-size: .85rem;
