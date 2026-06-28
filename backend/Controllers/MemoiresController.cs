@@ -5,6 +5,7 @@ using Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Prometheus;
 
 namespace Api.Controllers;
 
@@ -15,6 +16,23 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
 {
     private Guid CurrentUserId =>
         Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+        //Les metriques Prometheus pour le suivi des mémoires
+    private static readonly Counter MemoiresCreated = Metrics
+        .CreateCounter("memoires_created_total", "Nombre total de mémoires créés");
+
+    private static readonly Counter MemoiresValidated = Metrics
+        .CreateCounter("memoires_validated_total", "Nombre total de mémoires validés");
+
+    private static readonly Counter MemoiresRejected = Metrics
+        .CreateCounter("memoires_rejected_total", "Nombre total de mémoires rejetés");
+
+    private static readonly Counter MemoiresDeleted = Metrics
+        .CreateCounter("memoires_deleted_total", "Nombre total de mémoires supprimés");
+
+    private static readonly Counter MemoiresViewed = Metrics
+        .CreateCounter("memoires_viewed_total", "Nombre total de consultations de mémoires");
+
 
     // ── Étudiant : soumettre un mémoire ──────────────────────────────────
     [HttpPost]
@@ -33,7 +51,7 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
         };
         db.Memoires.Add(memoire);
         await db.SaveChangesAsync();
-
+        MemoiresCreated.Inc();
         await db.Entry(memoire).Reference(m => m.User).LoadAsync();
         log.LogInformation("Mémoire créé : {Id} par {UserId}", memoire.Id, CurrentUserId);
         return CreatedAtAction(nameof(GetById), new { id = memoire.Id }, ToDto(memoire));
@@ -49,6 +67,9 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
             .Where(m => m.UserId == userId)
             .OrderByDescending(m => m.CreatedAt)
             .ToListAsync();
+
+            MemoiresViewed.Inc(rows.Count);
+
         return Ok(rows.Select(ToDto));
     }
 
@@ -76,6 +97,8 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
             .Take(pageSize)
             .ToListAsync();
 
+            MemoiresViewed.Inc(rows.Count);
+
         return Ok(new PagedResult<MemoireDto>(rows.Select(ToDto).ToList(), total, page, pageSize));
     }
 
@@ -89,6 +112,8 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
         // Un simple user ne peut voir que les siens
         if (!User.IsInRole("Admin") && !User.IsInRole("SuperAdmin") && m.UserId != CurrentUserId)
             return Forbid();
+
+            MemoiresViewed.Inc(); 
 
         return Ok(ToDto(m));
     }
@@ -105,6 +130,7 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
         m.NoteRejet = null;
         m.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        MemoiresValidated.Inc();
         log.LogInformation("Mémoire {Id} validé par {Admin}", id, CurrentUserId);
         return NoContent();
     }
@@ -121,6 +147,7 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
         m.NoteRejet = dto.NoteRejet;
         m.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        MemoiresRejected.Inc();
         log.LogInformation("Mémoire {Id} rejeté par {Admin}", id, CurrentUserId);
         return NoContent();
     }
@@ -137,6 +164,7 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
 
         db.Memoires.Remove(m);
         await db.SaveChangesAsync();
+        MemoiresDeleted.Inc();
         return NoContent();
     }
 
