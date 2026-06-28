@@ -4,6 +4,7 @@ using Api.Models;
 using Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Prometheus; 
 
 namespace Api.Controllers;
 
@@ -12,6 +13,8 @@ namespace Api.Controllers;
 public class AuthController(AppDbContext db, ITokenService tokenSvc, ILogger<AuthController> log)
     : ControllerBase
 {
+    private static readonly Counter UsersCreated = Metrics
+        .CreateCounter("users_created_total", "Nombre total d'utilisateurs créés avec succès");
     // POST api/auth/register
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto dto)
@@ -29,6 +32,7 @@ public class AuthController(AppDbContext db, ITokenService tokenSvc, ILogger<Aut
 
         db.Users.Add(user);
         await db.SaveChangesAsync();
+        UsersCreated.Inc();
         log.LogInformation("Nouvel utilisateur inscrit : {Email}", user.Email);
         return Ok(BuildAuthResponse(user));
     }

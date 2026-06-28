@@ -5,6 +5,7 @@ using Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Prometheus; 
 
 namespace Api.Controllers;
 
@@ -13,6 +14,8 @@ namespace Api.Controllers;
 [Authorize]
 public class UsersController(AppDbContext db, ILogger<UsersController> log) : ControllerBase
 {
+    private static readonly Counter AdminUsersCreated = Metrics
+        .CreateCounter("admin_users_created_total", "Nombre total d'utilisateurs créés par un admin");
     // ── Profil personnel ─────────────────────────────────────────────────
     [HttpGet("me")]
     public async Task<ActionResult<UserDto>> GetMe()
@@ -104,6 +107,7 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
 
         db.Users.Add(user);
         await db.SaveChangesAsync();
+        AdminUsersCreated.Inc();
         return CreatedAtAction(nameof(GetById), new { id = user.Id }, ToDto(user));
     }
 
