@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Formatting.Compact;
+using Prometheus;
 
 Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
@@ -100,6 +101,11 @@ try
             Log.Information("Compte SuperAdmin créé : superadmin@usermgmt.local");
         }
     }
+
+    // Activer le middleware pour exposer les métriques
+        app.UseHttpMetrics();  // Capture les métriques HTTP
+        app.UseMetricServer(); // Expose /metrics
+
 
     app.UseSerilogRequestLogging(opts =>
         opts.MessageTemplate = "HTTP {RequestMethod} {RequestPath} → {StatusCode} ({Elapsed:0.0}ms)");

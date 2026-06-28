@@ -43,7 +43,39 @@ services:
     depends_on:
       - api
     ports:
-      - "80:80"
+      - "4200:80"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: usermgmt_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: usermgmt_grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    depends_on:
+      - prometheus
+    restart: unless-stopped
 
 volumes:
-  pg_data:
+  pg_data: 
+  prometheus_data:
+  grafana_data:
