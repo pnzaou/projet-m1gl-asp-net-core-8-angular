@@ -1,13 +1,17 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using Api.Infrastructure;
 using Api.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Prometheus;
 using Serilog;
 using Serilog.Formatting.Compact;
-using Prometheus;
 
 Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
@@ -34,8 +38,45 @@ try
 
     // ── JWT Authentication ───────────────────────────────────────────────────
     var jwtSection = builder.Configuration.GetSection("Jwt");
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(opt =>
+    var keycloakSection = builder.Configuration.GetSection("Keycloak");
+
+    builder.Services
+        .AddAuthentication(options =>
+        {
+            options.DefaultScheme = "MixedJwt";
+            options.DefaultAuthenticateScheme = "MixedJwt";
+            options.DefaultChallengeScheme = "MixedJwt";
+        })
+        .AddPolicyScheme("MixedJwt", "Accept either local JWT or Keycloak JWT", options =>
+        {
+            options.ForwardDefaultSelector = context =>
+            {
+                var header = context.Request.Headers.Authorization.ToString();
+                if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                    return JwtBearerDefaults.AuthenticationScheme;
+
+                var token = header["Bearer ".Length..].Trim();
+                if (string.IsNullOrWhiteSpace(token))
+                    return JwtBearerDefaults.AuthenticationScheme;
+
+                try
+                {
+                    var jwtToken = new JwtSecurityTokenHandler().ReadJwtToken(token);
+                    var issuer = jwtToken.Issuer;
+                    var audiences = jwtToken.Audiences;
+                    var isKeycloakToken = issuer.Contains("/realms/", StringComparison.OrdinalIgnoreCase)
+                        || issuer.Contains("keycloak", StringComparison.OrdinalIgnoreCase)
+                        || audiences.Any(a => string.Equals(a, keycloakSection["Audience"], StringComparison.OrdinalIgnoreCase));
+
+                    return isKeycloakToken ? "KeycloakBearer" : JwtBearerDefaults.AuthenticationScheme;
+                }
+                catch
+                {
+                    return JwtBearerDefaults.AuthenticationScheme;
+                }
+            };
+        })
+        .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, opt =>
         {
             opt.TokenValidationParameters = new TokenValidationParameters
             {
@@ -48,6 +89,31 @@ try
                 IssuerSigningKey = new SymmetricSecurityKey(
                     Encoding.UTF8.GetBytes(jwtSection["Key"]!)),
                 ClockSkew = TimeSpan.FromSeconds(30)
+            };
+        })
+        .AddJwtBearer("KeycloakBearer", opt =>
+        {
+            opt.Authority = keycloakSection["Authority"];
+            opt.Audience = keycloakSection["Audience"];
+            opt.RequireHttpsMetadata = keycloakSection.GetValue<bool>("RequireHttpsMetadata", true);
+            opt.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                NameClaimType = "preferred_username",
+                RoleClaimType = ClaimTypes.Role,
+                ValidIssuer = keycloakSection["Authority"],
+                ValidAudience = keycloakSection["Audience"],
+                ClockSkew = TimeSpan.FromSeconds(30)
+            };
+            opt.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = context =>
+                {
+                    MapKeycloakRoles(context);
+                    return Task.CompletedTask;
+                }
             };
         });
 
@@ -102,10 +168,8 @@ try
         }
     }
 
-    // Activer le middleware pour exposer les métriques
-        app.UseHttpMetrics();  // Capture les métriques HTTP
-        app.UseMetricServer(); // Expose /metrics
-
+    app.UseHttpMetrics();
+    app.UseMetricServer();
 
     app.UseSerilogRequestLogging(opts =>
         opts.MessageTemplate = "HTTP {RequestMethod} {RequestPath} → {StatusCode} ({Elapsed:0.0}ms)");
@@ -121,3 +185,45 @@ try
 }
 catch (Exception ex) { Log.Fatal(ex, "Application terminée de façon inattendue"); }
 finally { Log.CloseAndFlush(); }
+
+static void MapKeycloakRoles(TokenValidatedContext context)
+{
+    if (context.Principal?.Identity is not ClaimsIdentity identity)
+        return;
+
+    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    if (identity.FindFirst("realm_access") is { Value: not null } realmAccessClaim)
+    {
+        using var realmJson = JsonDocument.Parse(realmAccessClaim.Value);
+        if (realmJson.RootElement.TryGetProperty("roles", out var realmRoles))
+        {
+            foreach (var role in realmRoles.EnumerateArray())
+            {
+                var roleName = role.GetString();
+                if (!string.IsNullOrWhiteSpace(roleName))
+                    roles.Add(roleName);
+            }
+        }
+    }
+
+    if (identity.FindFirst("resource_access") is { Value: not null } resourceAccessClaim)
+    {
+        using var resourceJson = JsonDocument.Parse(resourceAccessClaim.Value);
+        foreach (var client in resourceJson.RootElement.EnumerateObject())
+        {
+            if (!client.Value.TryGetProperty("roles", out var clientRoles))
+                continue;
+
+            foreach (var role in clientRoles.EnumerateArray())
+            {
+                var roleName = role.GetString();
+                if (!string.IsNullOrWhiteSpace(roleName))
+                    roles.Add(roleName);
+            }
+        }
+    }
+
+    foreach (var role in roles)
+        identity.AddClaim(new Claim(ClaimTypes.Role, role));
+}

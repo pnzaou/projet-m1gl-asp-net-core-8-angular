@@ -12,7 +12,7 @@ namespace Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class UsersController(AppDbContext db, ILogger<UsersController> log) : ControllerBase
+public class UsersController(AppDbContext db) : ControllerBase
 {
     private static readonly Counter AdminUsersCreated = Metrics
         .CreateCounter("admin_users_created_total", "Nombre total d'utilisateurs créés par un admin");

@@ -35,6 +35,21 @@ services:
     ports:
       - "5000:8080"
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: usermgmt_keycloak
+    command: start-dev
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: localhost
+    ports:
+      - "8080:8080"
+
   web:
     build:
       context: ./frontend
@@ -76,6 +91,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  pg_data: 
+  pg_data:
+  keycloak_data:
   prometheus_data:
   grafana_data:
