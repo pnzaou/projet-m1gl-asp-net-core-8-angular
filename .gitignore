@@ -6,3 +6,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# .NET temporary files
+backend/.tmp/
+.tmp/
