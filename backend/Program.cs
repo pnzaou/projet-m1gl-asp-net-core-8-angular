@@ -55,6 +55,11 @@ try
     builder.Services.AddAuthorization();
     builder.Services.AddSingleton<IStorageService, StorageService>();
     builder.Services.AddScoped<IUserProfileService, UserProfileService>();
+    builder.Services.AddHttpClient<IKeycloakAdminService, KeycloakAdminService>((sp, client) =>
+    {
+        var baseUrl = sp.GetRequiredService<IConfiguration>()["Keycloak:AdminBaseUrl"]!;
+        client.BaseAddress = new Uri(baseUrl);
+    });
     builder.Services.AddControllers();
 
     // ── CORS pour Angular dev ────────────────────────────────────────────────
