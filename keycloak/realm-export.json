@@ -1,0 +1,86 @@
+{
+  "realm": "usermgmt",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "loginTheme": "usermgmt",
+  "accessTokenLifespan": 3600,
+  "roles": {
+    "realm": [
+      { "name": "User", "description": "Utilisateur standard" },
+      { "name": "Admin", "description": "Administrateur" },
+      { "name": "SuperAdmin", "description": "Super administrateur" }
+    ]
+  },
+  "users": [
+    {
+      "username": "superadmin@usermgmt.local",
+      "email": "superadmin@usermgmt.local",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Super",
+      "lastName": "Admin",
+      "credentials": [
+        { "type": "password", "value": "SuperAdmin@123", "temporary": true }
+      ],
+      "realmRoles": ["SuperAdmin"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "usermgmt-frontend",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost/*", "http://localhost:4200/*"],
+      "webOrigins": ["http://localhost", "http://localhost:4200"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm-roles-as-role-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "user.attribute": "foo",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "role",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "usermgmt-backend-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "usermgmt-backend",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "usermgmt-backend",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "usermgmt-backend-secret",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    }
+  ]
+}
