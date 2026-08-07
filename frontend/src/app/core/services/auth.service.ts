@@ -1,70 +1,68 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Router } from '@angular/router';
+import { KeycloakEventType, KeycloakService } from 'keycloak-angular';
 import { tap } from 'rxjs';
-import { AuthResponse, User } from '../../shared/models/user.model';
+import { User } from '../../shared/models/user.model';
 import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private _currentUser = signal<User | null>(this.loadUser());
+  private keycloak = inject(KeycloakService);
+  private http = inject(HttpClient);
+
+  private _authenticated = signal(this.keycloak.isLoggedIn());
+  private _roles = signal<string[]>(this.keycloak.getUserRoles(true));
+  private _currentUser = signal<User | null>(null);
+
+  isLoggedIn = this._authenticated.asReadonly();
   currentUser = this._currentUser.asReadonly();
-  isLoggedIn = computed(() => !!this._currentUser());
-  isAdmin = computed(() => ['Admin', 'SuperAdmin'].includes(this._currentUser()?.role ?? ''));
-  isSuperAdmin = computed(() => this._currentUser()?.role === 'SuperAdmin');
+  isAdmin = computed(() => this._roles().some(r => ['Admin', 'SuperAdmin'].includes(r)));
+  isSuperAdmin = computed(() => this._roles().includes('SuperAdmin'));
 
-  private readonly API = `${environment.apiUrl}/auth`;
+  private readonly API = `${environment.apiUrl}/users`;
 
-  constructor(private http: HttpClient, private router: Router) {}
+  constructor() {
+    // KeycloakService lives for the app's lifetime (providedIn: 'root'),
+    // so this subscription never needs to be torn down.
+    this.keycloak.keycloakEvents$.subscribe(event => {
+      if (
+        event.type === KeycloakEventType.OnAuthSuccess ||
+        event.type === KeycloakEventType.OnAuthRefreshSuccess ||
+        event.type === KeycloakEventType.OnReady
+      ) {
+        this._authenticated.set(this.keycloak.isLoggedIn());
+        this._roles.set(this.keycloak.getUserRoles(true));
+        if (this._authenticated() && !this._currentUser()) {
+          this.loadProfile().subscribe();
+        }
+      }
 
-  login(email: string, password: string) {
-    return this.http.post<AuthResponse>(`${this.API}/login`, { email, password })
-      .pipe(tap(res => this.storeSession(res)));
+      if (event.type === KeycloakEventType.OnAuthLogout) {
+        this._authenticated.set(false);
+        this._roles.set([]);
+        this._currentUser.set(null);
+      }
+    });
   }
 
-  register(data: { firstName: string; lastName: string; email: string; password: string }) {
-    return this.http.post<AuthResponse>(`${this.API}/register`, data)
-      .pipe(tap(res => this.storeSession(res)));
-  }
-
-  refresh() {
-    const rt = localStorage.getItem('refresh_token');
-    return this.http.post<AuthResponse>(`${this.API}/refresh`, { refreshToken: rt })
-      .pipe(tap(res => this.storeSession(res)));
+  login() {
+    return this.keycloak.login({ redirectUri: window.location.origin + '/dashboard' });
   }
 
   logout() {
-    const rt = localStorage.getItem('refresh_token');
-    if (rt) {
-      this.http.post(`${this.API}/logout`, { refreshToken: rt }).subscribe();
-    }
-    this.clearSession();
-    this.router.navigate(['/auth/login']);
+    return this.keycloak.logout(window.location.origin);
   }
 
-  getAccessToken(): string | null {
-    return localStorage.getItem('access_token');
+  loadProfile() {
+    return this.http.get<User>(`${this.API}/me`).pipe(tap(user => this._currentUser.set(user)));
   }
 
   updateLocalUser(user: User) {
-    localStorage.setItem('current_user', JSON.stringify(user));
     this._currentUser.set(user);
   }
 
-  private storeSession(res: AuthResponse) {
-    localStorage.setItem('access_token', res.accessToken);
-    localStorage.setItem('refresh_token', res.refreshToken);
-    localStorage.setItem('current_user', JSON.stringify(res.user));
-    this._currentUser.set(res.user);
-  }
-
-  private clearSession() {
-    ['access_token', 'refresh_token', 'current_user'].forEach(k => localStorage.removeItem(k));
-    this._currentUser.set(null);
-  }
-
-  private loadUser(): User | null {
-    const raw = localStorage.getItem('current_user');
-    return raw ? JSON.parse(raw) : null;
+  accountUrl(): string {
+    const instance = this.keycloak.getKeycloakInstance();
+    return `${instance.authServerUrl}realms/${instance.realm}/account`;
   }
 }

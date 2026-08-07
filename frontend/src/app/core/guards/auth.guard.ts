@@ -1,23 +1,25 @@
-import { inject } from '@angular/core';
-import { CanActivateFn, Router } from '@angular/router';
-import { AuthService } from '../services/auth.service';
+import { Injectable } from '@angular/core';
+import { ActivatedRouteSnapshot, Router, RouterStateSnapshot, UrlTree } from '@angular/router';
+import { KeycloakAuthGuard, KeycloakService } from 'keycloak-angular';
 
-export const authGuard: CanActivateFn = () => {
-  const auth = inject(AuthService);
-  const router = inject(Router);
-  return auth.isLoggedIn() ? true : router.createUrlTree(['/auth/login']);
-};
+@Injectable({ providedIn: 'root' })
+export class AuthGuard extends KeycloakAuthGuard {
+  constructor(router: Router, keycloakAngular: KeycloakService) {
+    super(router, keycloakAngular);
+  }
 
-export const guestGuard: CanActivateFn = () => {
-  const auth = inject(AuthService);
-  const router = inject(Router);
-  return auth.isLoggedIn() ? router.createUrlTree(['/dashboard']) : true;
-};
+  async isAccessAllowed(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): Promise<boolean | UrlTree> {
+    if (!this.authenticated) {
+      await this.keycloakAngular.login({ redirectUri: window.location.origin + state.url });
+      return false;
+    }
 
-export const adminGuard: CanActivateFn = () => {
-  const auth = inject(AuthService);
-  const router = inject(Router);
-  if (!auth.isLoggedIn()) return router.createUrlTree(['/auth/login']);
-  if (!auth.isAdmin()) return router.createUrlTree(['/dashboard']);
-  return true;
-};
+    const requiredRoles = route.data['roles'] as string[] | undefined;
+    if (requiredRoles?.length) {
+      const allowed = requiredRoles.some(r => this.roles.includes(r));
+      return allowed ? true : this.router.parseUrl('/dashboard');
+    }
+
+    return true;
+  }
+}
