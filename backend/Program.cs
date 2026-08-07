@@ -32,27 +32,27 @@ try
     builder.Services.AddDbContext<AppDbContext>(opt =>
         opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
-    // ── JWT Authentication ───────────────────────────────────────────────────
-    var jwtSection = builder.Configuration.GetSection("Jwt");
+    // ── Keycloak JWT Authentication ──────────────────────────────────────────
+    var kc = builder.Configuration.GetSection("Keycloak");
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(opt =>
         {
+            opt.MetadataAddress = kc["InternalMetadataAddress"]!;
+            opt.RequireHttpsMetadata = false;
             opt.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
+                ValidIssuer = kc["PublicAuthority"],
                 ValidateAudience = true,
+                ValidAudience = kc["Audience"],
                 ValidateLifetime = true,
-                ValidateIssuerSigningKey = true,
-                ValidIssuer = jwtSection["Issuer"],
-                ValidAudience = jwtSection["Audience"],
-                IssuerSigningKey = new SymmetricSecurityKey(
-                    Encoding.UTF8.GetBytes(jwtSection["Key"]!)),
-                ClockSkew = TimeSpan.FromSeconds(30)
+                NameClaimType = "preferred_username",
+                RoleClaimType = "role"
             };
         });
 
     builder.Services.AddAuthorization();
-    builder.Services.AddScoped<ITokenService, TokenService>();
+    builder.Services.AddSingleton<IStorageService, StorageService>();
     builder.Services.AddControllers();
 
     // ── CORS pour Angular dev ────────────────────────────────────────────────
@@ -84,22 +84,6 @@ try
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         db.Database.Migrate();
-
-        // ── Seed SuperAdmin (une seule fois) ──────────────────────────────
-        if (!db.Users.Any(u => u.Role == "SuperAdmin"))
-        {
-            db.Users.Add(new Api.Models.User
-            {
-                FirstName = "Super",
-                LastName = "Admin",
-                Email = "superadmin@usermgmt.local",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("SuperAdmin@123"),
-                Role = "SuperAdmin",
-                IsActive = true
-            });
-            db.SaveChanges();
-            Log.Information("Compte SuperAdmin créé : superadmin@usermgmt.local");
-        }
     }
 
     // Activer le middleware pour exposer les métriques
@@ -116,6 +100,7 @@ try
     app.UseCors("AllowAngular");
     app.UseAuthentication();
     app.UseAuthorization();
+    app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
     app.MapControllers();
     app.Run();
 }
