@@ -23,3 +23,14 @@ export class AuthGuard extends KeycloakAuthGuard {
     return true;
   }
 }
+
+@Injectable({ providedIn: 'root' })
+export class GuestGuard extends KeycloakAuthGuard {
+  constructor(router: Router, keycloakAngular: KeycloakService) {
+    super(router, keycloakAngular);
+  }
+
+  async isAccessAllowed(): Promise<boolean | UrlTree> {
+    return this.authenticated ? this.router.parseUrl('/dashboard') : true;
+  }
+}

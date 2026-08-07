@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Api.DTOs;
+using Api.Extensions;
 using Api.Infrastructure;
 using Api.Models;
 using Api.Services;
@@ -18,11 +19,13 @@ public class UsersController(AppDbContext db, IKeycloakAdminService keycloak, IL
     private static readonly Counter AdminUsersCreated = Metrics
         .CreateCounter("admin_users_created_total", "Nombre total d'utilisateurs créés par un admin");
 
+    private Guid CurrentUserId => User.GetCurrentUserId();
+
     // ── Profil personnel ─────────────────────────────────────────────────
     [HttpGet("me")]
     public async Task<ActionResult<UserDto>> GetMe()
     {
-        var id = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var id = CurrentUserId;
         var user = await db.Users.FindAsync(id);
         if (user is null) return NotFound();
         var (role, enabled) = await keycloak.GetUserStatusAsync(id);
@@ -32,7 +35,7 @@ public class UsersController(AppDbContext db, IKeycloakAdminService keycloak, IL
     [HttpPut("me")]
     public async Task<ActionResult<UserDto>> UpdateMe(UpdateProfileDto dto)
     {
-        var id = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var id = CurrentUserId;
         var user = await db.Users.FindAsync(id);
         if (user is null) return NotFound();
 

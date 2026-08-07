@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Api.DTOs;
+using Api.Extensions;
 using Api.Infrastructure;
 using Api.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -16,7 +17,7 @@ namespace Api.Controllers;
 public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log, IStorageService storageService) : ControllerBase
 {
     private Guid CurrentUserId =>
-        Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        User.GetCurrentUserId();
 
         //Les metriques Prometheus pour le suivi des mémoires
     private static readonly Counter MemoiresCreated = Metrics

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -13,7 +14,7 @@ public interface IKeycloakAdminService
     Task<(string Role, bool Enabled)> GetUserStatusAsync(Guid userId, CancellationToken ct = default);
 }
 
-public class KeycloakAdminService(HttpClient http, IConfiguration config) : IKeycloakAdminService
+public class KeycloakAdminService(HttpClient http, IConfiguration config, ILogger<KeycloakAdminService> logger) : IKeycloakAdminService
 {
     private static readonly string[] AppRoles = ["User", "Admin", "SuperAdmin"];
 
@@ -89,12 +90,34 @@ public class KeycloakAdminService(HttpClient http, IConfiguration config) : IKey
     {
         await AuthorizeAsync(ct);
 
-        var user = await http.GetFromJsonAsync<KeycloakUser>($"admin/realms/{_realm}/users/{userId}", ct);
-        var roles = await http.GetFromJsonAsync<List<KeycloakRole>>(
-            $"admin/realms/{_realm}/users/{userId}/role-mappings/realm", ct) ?? [];
+        try
+        {
+            var userResponse = await http.GetAsync($"admin/realms/{_realm}/users/{userId}", ct);
+            if (userResponse.StatusCode == HttpStatusCode.NotFound)
+            {
+                logger.LogWarning("Keycloak user {UserId} was not found; using default status", userId);
+                return ("User", false);
+            }
+            userResponse.EnsureSuccessStatusCode();
+            var user = await userResponse.Content.ReadFromJsonAsync<KeycloakUser>(cancellationToken: ct);
 
-        var role = AppRoles.FirstOrDefault(r => roles.Any(kr => kr.Name == r)) ?? "User";
-        return (role, user?.Enabled ?? false);
+            var rolesResponse = await http.GetAsync($"admin/realms/{_realm}/users/{userId}/role-mappings/realm", ct);
+            if (rolesResponse.StatusCode == HttpStatusCode.NotFound)
+            {
+                logger.LogWarning("No Keycloak role mappings were found for user {UserId}; using default role", userId);
+                return ("User", user?.Enabled ?? false);
+            }
+            rolesResponse.EnsureSuccessStatusCode();
+            var roles = await rolesResponse.Content.ReadFromJsonAsync<List<KeycloakRole>>(cancellationToken: ct) ?? [];
+
+            var role = AppRoles.FirstOrDefault(r => roles.Any(kr => kr.Name == r)) ?? "User";
+            return (role, user?.Enabled ?? false);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            logger.LogWarning(ex, "Keycloak user {UserId} could not be retrieved; using default status", userId);
+            return ("User", false);
+        }
     }
 
     private async Task AuthorizeAsync(CancellationToken ct)

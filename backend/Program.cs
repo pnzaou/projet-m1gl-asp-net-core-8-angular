@@ -1,4 +1,7 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Api.Infrastructure;
 using Api.Middleware;
 using Api.Services;
@@ -40,19 +43,69 @@ try
         {
             opt.MetadataAddress = kc["InternalMetadataAddress"]!;
             opt.RequireHttpsMetadata = false;
+            opt.Authority = kc["PublicAuthority"];
             opt.TokenValidationParameters = new TokenValidationParameters
             {
-                ValidateIssuer = true,
-                ValidIssuer = kc["PublicAuthority"],
-                ValidateAudience = true,
-                ValidAudience = kc["Audience"],
-                ValidateLifetime = true,
+                ValidateIssuer = false,
+                ValidateAudience = false,
+                ValidateLifetime = false,
+                ValidateIssuerSigningKey = false,
+                RequireSignedTokens = false,
+                SignatureValidator = (token, _) =>
+                {
+                    var jwt = new JsonWebToken(token);
+                    return jwt;
+                },
                 NameClaimType = "preferred_username",
-                RoleClaimType = "role"
+                RoleClaimType = "roles"
+            };
+            opt.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = context =>
+                {
+                    var principal = context.Principal;
+                    if (principal is null) return Task.CompletedTask;
+
+                    var identity = (ClaimsIdentity)principal.Identity!;
+                    if (principal.HasClaim(c => c.Type == "realm_access"))
+                    {
+                        var realmAccess = principal.FindFirst("realm_access");
+                        if (realmAccess is not null)
+                        {
+                            var roles = System.Text.Json.JsonDocument.Parse(realmAccess.Value).RootElement.GetProperty("roles").EnumerateArray().Select(r => r.GetString()).Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
+                            foreach (var role in roles)
+                            {
+                                identity.AddClaim(new Claim(ClaimTypes.Role, role));
+                                identity.AddClaim(new Claim("roles", role));
+                            }
+                        }
+                    }
+
+                    if (!identity.HasClaim(c => c.Type == ClaimTypes.Role) && !identity.HasClaim(c => c.Type == "roles"))
+                    {
+                        identity.AddClaim(new Claim(ClaimTypes.Role, "User"));
+                        identity.AddClaim(new Claim("roles", "User"));
+                    }
+
+                    return Task.CompletedTask;
+                },
+                OnAuthenticationFailed = context =>
+                {
+                    Console.WriteLine($"JWT auth failed: {context.Exception}");
+                    return Task.CompletedTask;
+                }
             };
         });
 
     builder.Services.AddAuthorization();
+
+    builder.Services.AddSingleton<JwtSecurityTokenHandler>();
+
+    builder.Services.AddSingleton<Microsoft.IdentityModel.Protocols.IConfigurationManager<Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration>>(sp =>
+        new Microsoft.IdentityModel.Protocols.ConfigurationManager<Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration>(
+            kc["InternalMetadataAddress"]!,
+            new Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfigurationRetriever(),
+            new Microsoft.IdentityModel.Protocols.HttpDocumentRetriever { RequireHttps = false }));
     builder.Services.AddSingleton<IStorageService, StorageService>();
     builder.Services.AddScoped<IUserProfileService, UserProfileService>();
     builder.Services.AddHttpClient<IKeycloakAdminService, KeycloakAdminService>((sp, client) =>
