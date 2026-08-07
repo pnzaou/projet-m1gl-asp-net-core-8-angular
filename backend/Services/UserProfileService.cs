@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Api.Infrastructure;
 using Api.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace Api.Services;
 
@@ -9,7 +10,7 @@ public interface IUserProfileService
     Task EnsureProfileAsync(ClaimsPrincipal principal, CancellationToken ct = default);
 }
 
-public class UserProfileService(AppDbContext db) : IUserProfileService
+public class UserProfileService(AppDbContext db, ILogger<UserProfileService> logger) : IUserProfileService
 {
     public async Task EnsureProfileAsync(ClaimsPrincipal principal, CancellationToken ct = default)
     {
@@ -26,6 +27,18 @@ public class UserProfileService(AppDbContext db) : IUserProfileService
             FirstName = principal.FindFirstValue(ClaimTypes.GivenName) ?? principal.FindFirstValue("given_name") ?? string.Empty,
             LastName = principal.FindFirstValue(ClaimTypes.Surname) ?? principal.FindFirstValue("family_name") ?? string.Empty
         });
-        await db.SaveChangesAsync(ct);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+        {
+            // Profile provisioning is best-effort: a token missing required claims (e.g. no
+            // email) or a unique-constraint conflict must not turn into a 500 for the whole
+            // request. Swallow and let the request continue; downstream controllers will see
+            // no profile row (e.g. GetMe 404s) — a reasonable degraded outcome.
+            logger.LogWarning(ex, "Failed to auto-provision Users profile for sub {Sub}", id);
+        }
     }
 }
