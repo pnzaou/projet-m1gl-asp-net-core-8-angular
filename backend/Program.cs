@@ -1,5 +1,6 @@
 using System.Text;
 using Api.Infrastructure;
+using Api.Middleware;
 using Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -53,6 +54,7 @@ try
 
     builder.Services.AddAuthorization();
     builder.Services.AddSingleton<IStorageService, StorageService>();
+    builder.Services.AddScoped<IUserProfileService, UserProfileService>();
     builder.Services.AddControllers();
 
     // ── CORS pour Angular dev ────────────────────────────────────────────────
@@ -100,6 +102,7 @@ try
     app.UseCors("AllowAngular");
     app.UseAuthentication();
     app.UseAuthorization();
+    app.UseMiddleware<UserProfileProvisioningMiddleware>();
     app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
     app.MapControllers();
     app.Run();
