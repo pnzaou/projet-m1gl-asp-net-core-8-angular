@@ -6,3 +6,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Superpowers scratch workspace
+.superpowers/
