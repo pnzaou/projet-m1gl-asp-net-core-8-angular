@@ -1140,14 +1140,16 @@ git commit -m "feat(backend): drive user identity/role/status through the Keyclo
 - Modify: `frontend/src/app/app.config.ts`
 
 **Interfaces:**
-- Produces: `environment.keycloakUrl`, an injectable `Keycloak` instance (from `keycloak-js`, provided app-wide by `provideKeycloak`), and a global bearer-token interceptor for any request whose URL matches `/api`. Consumed by `AuthService` (Task 11).
+- Produces: `environment.keycloakUrl`, an injectable `KeycloakService` (from `keycloak-angular`'s module-based API, initialized via `APP_INITIALIZER` before the app renders), and a classic `HTTP_INTERCEPTORS`-registered bearer interceptor (`KeycloakBearerInterceptor`) that attaches the current token to outgoing requests. Consumed by `AuthService` (Task 11).
+
+> **Verified against the installed package, not assumed:** `keycloak-angular`'s newer *functional* API (`provideKeycloak`, `KEYCLOAK_EVENT_SIGNAL`, `createAuthGuard`, standalone `Keycloak` injection) only ships from `keycloak-angular@19`, which requires `@angular/core@^19` — incompatible with this project's Angular 17.3, and upgrading Angular two major versions is out of scope for a Keycloak integration. `keycloak-angular@15.x` (the latest range whose peer dependency is `@angular/core@^17`) instead exports the older, stable module-based API: `KeycloakService`, `KeycloakAngularModule`, `KeycloakBearerInterceptor`, `KeycloakAuthGuard`. This task and Task 11 target that API. Confirm this is still accurate for whatever version actually installs by checking `frontend/node_modules/keycloak-angular/public_api.d.ts` — if a *newer* keycloak-angular in the 15.x-or-adjacent range has back-ported the functional API by the time you run this, prefer it and note the substitution; otherwise use the code below as-is.
 
 - [ ] **Step 1: Add dependencies to `frontend/package.json`**
 
 In `dependencies`:
 
 ```json
-    "keycloak-angular": "^15.2.1",
+    "keycloak-angular": "^15.3.0",
     "keycloak-js": "^25.0.6",
 ```
 
@@ -1212,33 +1214,16 @@ This is keycloak-js's standard silent SSO-check page — it lets Keycloak detect
 - [ ] **Step 6: Rewrite `frontend/src/app/app.config.ts`**
 
 ```typescript
-import { ApplicationConfig } from '@angular/core';
+import { APP_INITIALIZER, ApplicationConfig, importProvidersFrom } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
-import {
-  provideKeycloak,
-  createInterceptorCondition,
-  IncludeBearerTokenCondition,
-  INCLUDE_BEARER_TOKEN_INTERCEPTOR_CONFIG,
-  includeBearerTokenInterceptor,
-  withAutoRefreshToken,
-  AutoRefreshTokenService,
-  UserActivityService
-} from 'keycloak-angular';
+import { HTTP_INTERCEPTORS, provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { KeycloakAngularModule, KeycloakBearerInterceptor, KeycloakService } from 'keycloak-angular';
 import { routes } from './app.routes';
 import { environment } from '../environments/environment';
 
-const bearerCondition = createInterceptorCondition<IncludeBearerTokenCondition>({
-  urlPattern: /\/api(\/|$)/,
-  bearerPrefix: 'Bearer'
-});
-
-export const appConfig: ApplicationConfig = {
-  providers: [
-    provideRouter(routes),
-    provideHttpClient(withInterceptors([includeBearerTokenInterceptor])),
-    { provide: INCLUDE_BEARER_TOKEN_INTERCEPTOR_CONFIG, useValue: [bearerCondition] },
-    provideKeycloak({
+function initializeKeycloak(keycloak: KeycloakService) {
+  return () =>
+    keycloak.init({
       config: {
         url: environment.keycloakUrl,
         realm: 'usermgmt',
@@ -1249,15 +1234,25 @@ export const appConfig: ApplicationConfig = {
         pkceMethod: 'S256',
         silentCheckSsoRedirectUri: window.location.origin + '/assets/silent-check-sso.html'
       },
-      features: [
-        withAutoRefreshToken({ onInactivityTimeout: 'logout', sessionTimeout: 60000 })
-      ]
-    }),
-    AutoRefreshTokenService,
-    UserActivityService
+      bearerExcludedUrls: ['/auth/']
+    });
+}
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes),
+    // withInterceptorsFromDi() is required — without it, provideHttpClient()
+    // silently ignores classic HTTP_INTERCEPTORS-registered interceptors
+    // like KeycloakBearerInterceptor below.
+    provideHttpClient(withInterceptorsFromDi()),
+    importProvidersFrom(KeycloakAngularModule),
+    { provide: HTTP_INTERCEPTORS, useClass: KeycloakBearerInterceptor, multi: true },
+    { provide: APP_INITIALIZER, useFactory: initializeKeycloak, multi: true, deps: [KeycloakService] }
   ]
 };
 ```
+
+`bearerExcludedUrls: ['/auth/']` keeps `KeycloakBearerInterceptor` (which by default attaches a bearer token to every outgoing HTTP request) from ever attaching one to a call that happens to hit Keycloak's own `/auth/...` path — defensive, since in practice this app only calls `/api/...` through `HttpClient` (Keycloak communication itself goes through `keycloak-js` internally, not Angular's `HttpClient`).
 
 - [ ] **Step 7: Verify the frontend still builds**
 
@@ -1282,28 +1277,26 @@ git commit -m "feat(frontend): bootstrap keycloak-angular (OIDC config, bearer i
 - Modify: `frontend/src/app/shared/components/shell/shell.component.ts`
 
 **Interfaces:**
-- Consumes: `Keycloak` (from `keycloak-js`, provided by Task 10), `KEYCLOAK_EVENT_SIGNAL`/`KeycloakEventType` (from `keycloak-angular`).
+- Consumes: `KeycloakService` (from `keycloak-angular`'s module API, initialized by Task 10's `APP_INITIALIZER`), `KeycloakEventType` (from `keycloak-angular`).
 - Produces: `AuthService.isLoggedIn`, `.isAdmin`, `.isSuperAdmin`, `.currentUser` — same public shape as before, so `ShellComponent`, `ProfileComponent`, and the memoire components that already read them don't need further changes beyond this task.
 
 - [ ] **Step 1: Rewrite `frontend/src/app/core/services/auth.service.ts`**
 
 ```typescript
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import Keycloak from 'keycloak-js';
-import { KEYCLOAK_EVENT_SIGNAL, KeycloakEventType } from 'keycloak-angular';
+import { KeycloakEventType, KeycloakService } from 'keycloak-angular';
 import { tap } from 'rxjs';
 import { User } from '../../shared/models/user.model';
 import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private keycloak = inject(Keycloak);
+  private keycloak = inject(KeycloakService);
   private http = inject(HttpClient);
-  private keycloakSignal = inject(KEYCLOAK_EVENT_SIGNAL);
 
-  private _authenticated = signal(!!this.keycloak.authenticated);
-  private _roles = signal<string[]>(this.keycloak.realmAccess?.roles ?? []);
+  private _authenticated = signal(this.keycloak.isLoggedIn());
+  private _roles = signal<string[]>(this.keycloak.getUserRoles(true));
   private _currentUser = signal<User | null>(null);
 
   isLoggedIn = this._authenticated.asReadonly();
@@ -1314,22 +1307,22 @@ export class AuthService {
   private readonly API = `${environment.apiUrl}/users`;
 
   constructor() {
-    effect(() => {
-      const event = this.keycloakSignal();
-
+    // KeycloakService lives for the app's lifetime (providedIn: 'root'),
+    // so this subscription never needs to be torn down.
+    this.keycloak.keycloakEvents$.subscribe(event => {
       if (
-        event.type === KeycloakEventType.AuthSuccess ||
-        event.type === KeycloakEventType.AuthRefreshSuccess ||
-        event.type === KeycloakEventType.Ready
+        event.type === KeycloakEventType.OnAuthSuccess ||
+        event.type === KeycloakEventType.OnAuthRefreshSuccess ||
+        event.type === KeycloakEventType.OnReady
       ) {
-        this._authenticated.set(!!this.keycloak.authenticated);
-        this._roles.set(this.keycloak.realmAccess?.roles ?? []);
+        this._authenticated.set(this.keycloak.isLoggedIn());
+        this._roles.set(this.keycloak.getUserRoles(true));
         if (this._authenticated() && !this._currentUser()) {
           this.loadProfile().subscribe();
         }
       }
 
-      if (event.type === KeycloakEventType.AuthLogout) {
+      if (event.type === KeycloakEventType.OnAuthLogout) {
         this._authenticated.set(false);
         this._roles.set([]);
         this._currentUser.set(null);
@@ -1342,7 +1335,7 @@ export class AuthService {
   }
 
   logout() {
-    return this.keycloak.logout({ redirectUri: window.location.origin });
+    return this.keycloak.logout(window.location.origin);
   }
 
   loadProfile() {
@@ -1354,46 +1347,47 @@ export class AuthService {
   }
 
   accountUrl(): string {
-    return `${this.keycloak.authServerUrl}realms/${this.keycloak.realm}/account`;
+    const instance = this.keycloak.getKeycloakInstance();
+    return `${instance.authServerUrl}realms/${instance.realm}/account`;
   }
 }
 ```
 
-> **Implementation note:** `KEYCLOAK_EVENT_SIGNAL` and `KeycloakEventType` are the event-bus exports documented for `keycloak-angular` 15.x. If the installed version's type declarations (`node_modules/keycloak-angular/index.d.ts`) name these differently, adjust the import names only — the `effect()` structure and the rest of the service stay the same.
+`getUserRoles(true)` passes `realmRoles: true`, returning realm roles specifically (not client roles) — matching the `User`/`Admin`/`SuperAdmin` realm roles defined in `keycloak/realm-export.json` (Task 2).
 
 - [ ] **Step 2: Rewrite `frontend/src/app/core/guards/auth.guard.ts`**
 
+`KeycloakAuthGuard` in this version of `keycloak-angular` is an abstract *class* (implementing `CanActivate`), not a functional guard factory — it populates `this.authenticated`/`this.roles` before calling your `isAccessAllowed` override:
+
 ```typescript
-import { inject } from '@angular/core';
-import { ActivatedRouteSnapshot, CanActivateFn, Router, RouterStateSnapshot } from '@angular/router';
-import { AuthGuardData, createAuthGuard } from 'keycloak-angular';
-import { AuthService } from '../services/auth.service';
+import { Injectable } from '@angular/core';
+import { ActivatedRouteSnapshot, Router, RouterStateSnapshot, UrlTree } from '@angular/router';
+import { KeycloakAuthGuard, KeycloakService } from 'keycloak-angular';
 
-const isAccessAllowed = async (
-  route: ActivatedRouteSnapshot,
-  _state: RouterStateSnapshot,
-  authData: AuthGuardData
-) => {
-  const { authenticated, grantedRoles } = authData;
-  const router = inject(Router);
-  const auth = inject(AuthService);
-
-  if (!authenticated) {
-    auth.login();
-    return false;
+@Injectable({ providedIn: 'root' })
+export class AuthGuard extends KeycloakAuthGuard {
+  constructor(router: Router, keycloakAngular: KeycloakService) {
+    super(router, keycloakAngular);
   }
 
-  const requiredRoles = route.data['roles'] as string[] | undefined;
-  if (requiredRoles?.length) {
-    const roles = grantedRoles.realmRoles ?? [];
-    return requiredRoles.some(r => roles.includes(r)) ? true : router.parseUrl('/dashboard');
+  async isAccessAllowed(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): Promise<boolean | UrlTree> {
+    if (!this.authenticated) {
+      await this.keycloakAngular.login({ redirectUri: window.location.origin + state.url });
+      return false;
+    }
+
+    const requiredRoles = route.data['roles'] as string[] | undefined;
+    if (requiredRoles?.length) {
+      const allowed = requiredRoles.some(r => this.roles.includes(r));
+      return allowed ? true : this.router.parseUrl('/dashboard');
+    }
+
+    return true;
   }
-
-  return true;
-};
-
-export const authGuard = createAuthGuard<CanActivateFn>(isAccessAllowed);
+}
 ```
+
+Angular's router `canActivate` array accepts an injectable class implementing `CanActivate` exactly like it accepts a functional guard — later tasks reference this as `canActivate: [AuthGuard]` (the class itself, resolved via DI), the same way the old file's `[authGuard]` was referenced.
 
 - [ ] **Step 3: Delete `frontend/src/app/core/interceptors/auth.interceptor.ts`**
 
@@ -1401,11 +1395,11 @@ export const authGuard = createAuthGuard<CanActivateFn>(isAccessAllowed);
 git rm frontend/src/app/core/interceptors/auth.interceptor.ts
 ```
 
-(Its job — attaching the bearer token and handling refresh — is now done by `includeBearerTokenInterceptor` + `withAutoRefreshToken`, wired in Task 10.)
+(Its job — attaching the bearer token and handling refresh — is now done by `KeycloakBearerInterceptor`, wired into `HTTP_INTERCEPTORS` in Task 10's `app.config.ts`.)
 
 - [ ] **Step 4: Update `frontend/src/app/shared/components/shell/shell.component.ts`**
 
-No structural change needed — it already reads `auth.currentUser()`, `auth.isSuperAdmin()`, `auth.isAdmin()`, and calls `auth.logout()`, all of which keep the same signatures. Just confirm (no edit) that `ShellComponent` itself does not need a manual profile-load call, since `AuthService`'s constructor `effect()` now loads the profile automatically the moment `authenticated` flips to `true` (Step 1).
+No structural change needed — it already reads `auth.currentUser()`, `auth.isSuperAdmin()`, `auth.isAdmin()`, and calls `auth.logout()`, all of which keep the same signatures. Just confirm (no edit) that `ShellComponent` itself does not need a manual profile-load call, since `AuthService`'s constructor subscription to `keycloakEvents$` now loads the profile automatically the moment authentication succeeds (Step 1).
 
 - [ ] **Step 5: Verify the frontend still builds**
 
@@ -1429,7 +1423,7 @@ git commit -m "feat(frontend): drive AuthService and route guards off the Keyclo
 - Modify: `frontend/src/app/app.routes.ts`
 
 **Interfaces:**
-- Consumes: `authGuard` from Task 11 (now the only guard — `guestGuard` and `adminGuard` are gone).
+- Consumes: `AuthGuard` from Task 11 (now the only guard — `guestGuard` and `adminGuard` are gone).
 
 - [ ] **Step 1: Delete the auth feature folder**
 
@@ -1441,13 +1435,13 @@ git rm -r frontend/src/app/features/auth
 
 ```typescript
 import { Routes } from '@angular/router';
-import { authGuard } from './core/guards/auth.guard';
+import { AuthGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
   { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
   {
     path: '',
-    canActivate: [authGuard],
+    canActivate: [AuthGuard],
     loadComponent: () => import('./shared/components/shell/shell.component').then(m => m.ShellComponent),
     children: [
       {
@@ -1460,13 +1454,13 @@ export const routes: Routes = [
       },
       {
         path: 'users',
-        canActivate: [authGuard],
+        canActivate: [AuthGuard],
         data: { roles: ['Admin', 'SuperAdmin'] },
         loadComponent: () => import('./features/users/users.component').then(m => m.UsersComponent)
       },
       {
         path: 'admin',
-        canActivate: [authGuard],
+        canActivate: [AuthGuard],
         data: { roles: ['Admin', 'SuperAdmin'] },
         loadComponent: () => import('./features/admin/admin.component').then(m => m.AdminComponent)
       },
@@ -1476,7 +1470,7 @@ export const routes: Routes = [
       },
       {
         path: 'admin/memoires',
-        canActivate: [authGuard],
+        canActivate: [AuthGuard],
         data: { roles: ['Admin', 'SuperAdmin'] },
         loadComponent: () => import('./features/memoires/admin-memoires.component').then(m => m.AdminMemoiresComponent)
       },
@@ -1486,7 +1480,7 @@ export const routes: Routes = [
 ];
 ```
 
-Note the top-level `'auth'` route branch is gone entirely — there is no more in-app login/register page. Visiting a protected route while unauthenticated now triggers `authGuard`'s `auth.login()` call (Task 11), which redirects the browser straight to Keycloak.
+Note the top-level `'auth'` route branch is gone entirely — there is no more in-app login/register page. Visiting a protected route while unauthenticated now triggers `AuthGuard.isAccessAllowed`'s `keycloak.login()` call (Task 11), which redirects the browser straight to Keycloak.
 
 - [ ] **Step 3: Verify the frontend still builds**
 
