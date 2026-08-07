@@ -3,11 +3,11 @@ version: '3.9'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: usermgmt_db
+    container_name: usermgmt_postgres
     environment:
-      POSTGRES_DB: usermgmt
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: ${POSTGRES_DB:-usermgmt}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
     ports:
       - "5433:5432"
     volumes:
@@ -17,6 +17,75 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - usermgmt-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: usermgmt_redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - usermgmt-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: usermgmt_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - usermgmt-network
+
+  keycloak-db:
+    image: postgres:16-alpine
+    container_name: usermgmt_keycloak_db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_secret}
+    volumes:
+      - keycloak_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - usermgmt-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: usermgmt_keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: "jdbc:postgresql://keycloak-db:5432/keycloak"
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_secret}
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost/auth}
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_PROXY: edge
+      KC_HTTP_ENABLED: "true"
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+      - ./keycloak/themes/usermgmt:/opt/keycloak/themes/usermgmt:ro
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    networks:
+      - usermgmt-network
 
   api:
     build:
@@ -26,14 +95,26 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
+      keycloak:
+        condition: service_started
     environment:
-      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=usermgmt;Username=postgres;Password=secret"
-      Jwt__Key: "super-secret-key-minimum-32-characters!!"
-      Jwt__Issuer: "usermgmt-api"
-      Jwt__Audience: "usermgmt-client"
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-usermgmt};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-secret};Trust Server Certificate=true"
+      Keycloak__PublicAuthority: "${KEYCLOAK_PUBLIC_URL:-http://localhost/auth}/realms/${KEYCLOAK_REALM:-usermgmt}"
+      Keycloak__InternalMetadataAddress: "http://keycloak:8080/auth/realms/${KEYCLOAK_REALM:-usermgmt}/.well-known/openid-configuration"
+      Keycloak__Audience: usermgmt-backend
+      Keycloak__Realm: "${KEYCLOAK_REALM:-usermgmt}"
+      Keycloak__AdminBaseUrl: "http://keycloak:8080/auth/"
+      Keycloak__AdminClientId: usermgmt-backend
+      Keycloak__AdminClientSecret: "${KEYCLOAK_BACKEND_CLIENT_SECRET:-usermgmt-backend-secret}"
       ASPNETCORE_ENVIRONMENT: Production
+      REDIS__HOST: redis
+      REDIS__PORT: 6379
     ports:
       - "5000:8080"
+    networks:
+      - usermgmt-network
 
   web:
     build:
@@ -44,6 +125,23 @@ services:
       - api
     ports:
       - "4200:80"
+    networks:
+      - usermgmt-network
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: usermgmt_gateway
+    depends_on:
+      - api
+      - web
+      - grafana
+      - minio
+    ports:
+      - "80:80"
+    networks:
+      - usermgmt-network
 
   prometheus:
     image: prom/prometheus:latest
@@ -59,23 +157,36 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+    networks:
+      - usermgmt-network
 
   grafana:
     image: grafana/grafana:latest
     container_name: usermgmt_grafana
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/etc/grafana/dashboards
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
     depends_on:
       - prometheus
     restart: unless-stopped
+    networks:
+      - usermgmt-network
 
 volumes:
-  pg_data: 
+  pg_data:
+  redis_data:
+  minio_data:
   prometheus_data:
   grafana_data:
+  keycloak_db_data:
+
+networks:
+  usermgmt-network:
+    driver: bridge

@@ -9,3 +9,5 @@ Thumbs.db
 
 # Superpowers scratch workspace
 .superpowers/
+
+.env
