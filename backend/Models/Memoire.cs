@@ -13,6 +13,7 @@ public class Memoire
     public string Statut { get; set; } = "Delivre";
     public string? NoteRejet { get; set; }
     public Guid UserId { get; set; }
+    public string? FileUrl { get; set; }
     public User User { get; set; } = null!;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

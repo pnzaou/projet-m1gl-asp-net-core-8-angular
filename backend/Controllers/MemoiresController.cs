@@ -6,13 +6,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Prometheus;
+using Api.Services;
 
 namespace Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log) : ControllerBase
+public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log, IStorageService storageService) : ControllerBase
 {
     private Guid CurrentUserId =>
         Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -36,8 +37,20 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
 
     // ── Étudiant : soumettre un mémoire ──────────────────────────────────
     [HttpPost]
-    public async Task<ActionResult<MemoireDto>> Create(CreateMemoireDto dto)
+    public async Task<ActionResult<MemoireDto>> Create([FromForm] CreateMemoireDto dto)
     {
+        var fileUrl = string.Empty;
+        if (dto.File is not null)
+        {
+            var isPdf = dto.File.ContentType?.Equals("application/pdf", StringComparison.OrdinalIgnoreCase) == true
+                || dto.File.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+            if (!isPdf)
+                return BadRequest("Le fichier doit être un PDF.");
+
+            using var stream = dto.File.OpenReadStream();
+            fileUrl = await storageService.UploadPdfAsync(stream, dto.File.FileName, dto.File.ContentType ?? "application/pdf");
+        }
+
         var memoire = new Memoire
         {
             Titre = dto.Titre,
@@ -47,7 +60,8 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
             Description = dto.Description,
             Promoteur = dto.Promoteur,
             Statut = "Delivre",
-            UserId = CurrentUserId
+            UserId = CurrentUserId,
+            FileUrl = fileUrl
         };
         db.Memoires.Add(memoire);
         await db.SaveChangesAsync();
@@ -118,6 +132,20 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
         return Ok(ToDto(m));
     }
 
+    [AllowAnonymous]
+    [HttpGet("file")]
+    public async Task<IActionResult> GetFile([FromQuery] string key, [FromQuery] bool inline = true)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return BadRequest("Clé de fichier absente.");
+
+        var objectName = Uri.UnescapeDataString(key);
+        var (stream, contentType, fileName) = await storageService.DownloadAsync(objectName);
+        var disposition = inline ? "inline" : "attachment";
+        Response.Headers.ContentDisposition = $"{disposition}; filename=\"{Uri.EscapeDataString(fileName)}\"";
+        return File(stream, contentType);
+    }
+
     // ── Admin : valider ───────────────────────────────────────────────────
     [HttpPatch("{id:guid}/valider")]
     [Authorize(Roles = "Admin,SuperAdmin")]
@@ -172,5 +200,5 @@ public class MemoiresController(AppDbContext db, ILogger<MemoiresController> log
         m.Id, m.Titre, m.Auteur, m.Annee, m.Specialite,
         m.Description, m.Promoteur, m.Statut, m.NoteRejet,
         m.UserId, $"{m.User.FirstName} {m.User.LastName}",
-        m.CreatedAt, m.UpdatedAt);
+        m.FileUrl, m.CreatedAt, m.UpdatedAt);
 }

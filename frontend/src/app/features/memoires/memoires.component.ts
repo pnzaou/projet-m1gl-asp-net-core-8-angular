@@ -57,6 +57,13 @@ import { Memoire } from '../../shared/models/memoire.model';
           <label>Résumé</label>
           <textarea formControlName="description" rows="4" placeholder="Résumé du mémoire (optionnel)"></textarea>
         </div>
+        <div class="form-group">
+          <label>Fichier PDF</label>
+          <input type="file" accept="application/pdf" (change)="onFileSelected($event)" />
+          @if (selectedFileName()) {
+            <small>Fichier sélectionné : {{ selectedFileName() }}</small>
+          }
+        </div>
         <div class="form-footer">
           <button type="button" class="btn btn-secondary" (click)="showForm.set(false)">Annuler</button>
           <button type="submit" class="btn btn-primary" [disabled]="saving()">
@@ -99,6 +106,16 @@ import { Memoire } from '../../shared/models/memoire.model';
           @if (m.description) {
             <p class="memoire-desc">{{ m.description }}</p>
           }
+          @if (m.fileUrl) {
+            <div class="file-actions">
+              <a class="btn btn-secondary btn-sm" [href]="getFileUrl(m, true)" target="_blank" rel="noopener noreferrer">
+                <i class="fa-solid fa-eye"></i> Ouvrir
+              </a>
+              <a class="btn btn-secondary btn-sm" [href]="getFileUrl(m, false)" [download]="getFileName(m.fileUrl)">
+                <i class="fa-solid fa-download"></i> Télécharger
+              </a>
+            </div>
+          }
           @if (m.statut === 'Rejete' && m.noteRejet) {
             <div class="rejection-note">
               <strong><i class="fa-solid fa-circle-xmark"></i> Motif du rejet :</strong>
@@ -136,6 +153,7 @@ import { Memoire } from '../../shared/models/memoire.model';
     .subtitle { color: #64748b; margin: 0; }
 
     .btn { padding: .65rem 1.25rem; border-radius: .5rem; font-size: .9rem; font-weight: 600; cursor: pointer; border: none; }
+    .btn-sm { padding: .4rem .75rem; font-size: .8rem; }
     .btn-primary { background: #3b82f6; color: white; }
     .btn-primary:hover:not(:disabled) { background: #2563eb; }
     .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
@@ -199,6 +217,8 @@ import { Memoire } from '../../shared/models/memoire.model';
     .rejection-note p { color: #7f1d1d; margin: 0; }
 
     .memoire-date { font-size: .78rem; color: #94a3b8; margin-top: .75rem; }
+    .file-actions { display: flex; gap: .5rem; margin-top: .75rem; flex-wrap: wrap; }
+    .file-actions a { text-decoration: none; display: inline-flex; align-items: center; gap: .35rem; }
 
     .modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,.5);
@@ -224,6 +244,8 @@ export class MemoiresComponent implements OnInit {
   showForm = signal(false);
   formError = signal('');
   deleteTarget = signal<Memoire | null>(null);
+  selectedFileName = signal<string>('');
+  selectedFile = signal<File | null>(null);
   currentYear = new Date().getFullYear();
 
   form = this.fb.group({
@@ -247,6 +269,21 @@ export class MemoiresComponent implements OnInit {
     });
   }
 
+  onFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    const isPdf = !!file && (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
+    if (!isPdf) {
+      this.formError.set('Le fichier doit être un PDF.');
+      this.selectedFile.set(null);
+      this.selectedFileName.set('');
+      return;
+    }
+    this.selectedFile.set(file);
+    this.selectedFileName.set(file?.name ?? '');
+    this.formError.set('');
+  }
+
   onSubmit() {
     if (this.form.invalid) { this.form.markAllAsTouched(); return; }
     this.saving.set(true);
@@ -255,12 +292,15 @@ export class MemoiresComponent implements OnInit {
     this.memoireSvc.create({
       titre: v.titre!, auteur: v.auteur!, annee: v.annee!,
       specialite: v.specialite!, promoteur: v.promoteur || undefined,
-      description: v.description || undefined
+      description: v.description || undefined,
+      file: this.selectedFile()
     }).subscribe({
       next: () => {
         this.saving.set(false);
         this.showForm.set(false);
         this.form.reset({ annee: this.currentYear });
+        this.selectedFile.set(null);
+        this.selectedFileName.set('');
         this.loadMine();
       },
       error: (e) => {
@@ -268,6 +308,25 @@ export class MemoiresComponent implements OnInit {
         this.saving.set(false);
       }
     });
+  }
+
+  getFileUrl(m: Memoire, inline = true) {
+    if (!m.fileUrl) return '';
+    const url = new URL(m.fileUrl, window.location.origin);
+    url.searchParams.set('inline', inline ? 'true' : 'false');
+    return url.toString();
+  }
+
+  getFileName(fileUrl?: string | null) {
+    if (!fileUrl) return 'document.pdf';
+    try {
+      const url = new URL(fileUrl, window.location.origin);
+      const key = url.searchParams.get('key');
+      const fallback = key ? decodeURIComponent(key).split('/').pop() : '';
+      return fallback || 'document.pdf';
+    } catch {
+      return 'document.pdf';
+    }
   }
 
   confirmDelete(m: Memoire) { this.deleteTarget.set(m); }

@@ -11,7 +11,15 @@ export class MemoireService {
   constructor(private http: HttpClient) {}
 
   create(dto: CreateMemoireDto) {
-    return this.http.post<Memoire>(this.API, dto);
+    const formData = new FormData();
+    formData.append('titre', dto.titre);
+    formData.append('auteur', dto.auteur);
+    formData.append('annee', dto.annee.toString());
+    formData.append('specialite', dto.specialite);
+    if (dto.promoteur) formData.append('promoteur', dto.promoteur);
+    if (dto.description) formData.append('description', dto.description);
+    if (dto.file) formData.append('file', dto.file, dto.file.name);
+    return this.http.post<Memoire>(this.API, formData);
   }
 
   getMine() {

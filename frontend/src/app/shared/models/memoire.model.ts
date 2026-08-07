@@ -12,6 +12,7 @@ export interface Memoire {
   noteRejet?: string;
   userId: string;
   userFullName: string;
+  fileUrl?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -23,4 +24,5 @@ export interface CreateMemoireDto {
   specialite: string;
   description?: string;
   promoteur?: string;
+  file?: File | null;
 }

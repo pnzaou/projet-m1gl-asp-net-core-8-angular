@@ -1,0 +1,1 @@
+ALTER TABLE "Memoires" ADD COLUMN IF NOT EXISTS "FileUrl" text;
