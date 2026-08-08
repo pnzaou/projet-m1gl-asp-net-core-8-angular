@@ -10,6 +10,9 @@ Thumbs.db
 # Superpowers scratch workspace
 .superpowers/
 
+# Réglages Claude Code : locaux à chaque machine, pas de partage via le dépôt
+.claude/
+
 # .NET temporary files
 backend/.tmp/
 .tmp/
