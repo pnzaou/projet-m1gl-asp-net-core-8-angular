@@ -25,6 +25,14 @@
         { "type": "password", "value": "SuperAdmin@123", "temporary": true }
       ],
       "realmRoles": ["SuperAdmin"]
+    },
+    {
+      "username": "service-account-usermgmt-backend",
+      "enabled": true,
+      "serviceAccountClientId": "usermgmt-backend",
+      "clientRoles": {
+        "realm-management": ["manage-users", "view-users", "view-realm"]
+      }
     }
   ],
   "clients": [
