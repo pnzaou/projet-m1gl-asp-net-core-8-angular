@@ -1,70 +1,255 @@
-:root {
+/* =========================================================================
+   Thème de connexion UserMgmt — Keycloak 26 (parent keycloak.v2)
+   =========================================================================
+
+   Trois particularités du thème parent expliquent la forme de ce fichier :
+
+   1. Keycloak 26 pose `pf-v5-theme-dark` sur <html>, donc PatternFly 5 démarre
+      en palette sombre. Plutôt que de repeindre chaque composant, on redéfinit
+      les variables globales PF5 : tous les composants en dérivent.
+
+   2. Les classes ont changé avec PatternFly 5 : `.pf-v5-c-*`. Les anciens
+      sélecteurs PatternFly 4 (`.card-pf`, `.login-pf-page-header`,
+      `.pf-c-form-control`) n'existent plus et ne servent à rien ici.
+
+   3. `.pf-v5-c-login__container` est une grille deux colonnes en grand écran
+      (`grid-template-areas: "main header"`), qui place le branding *à côté* de
+      la carte, et porte un `padding-inline` de 98px. D'où l'empilement vertical
+      rétabli plus bas, padding compris — sans quoi la carte est écrasée.
+
+   Ce fichier est chargé après patternfly.min.css : la cascade suffit, aucun
+   !important n'est nécessaire.
+   ========================================================================= */
+
+/* ---- Palette ------------------------------------------------------------ */
+/* Alignée sur frontend/src/styles.scss (#f8fafc / #1e293b) pour que l'écran
+   de connexion et l'application se ressemblent. */
+:root,
+html.pf-v5-theme-dark {
   --um-bg: #f8fafc;
+  --um-surface: #ffffff;
   --um-text: #1e293b;
   --um-muted: #64748b;
+  --um-border: #cbd5e1;
+  --um-border-light: #e2e8f0;
   --um-primary: #3b82f6;
   --um-primary-hover: #2563eb;
+  --um-error: #dc2626;
   --um-error-bg: #fef2f2;
-  --um-error-text: #dc2626;
   --um-error-border: #fecaca;
+
+  /* Repasse PatternFly 5 en palette claire. */
+  --pf-v5-global--BackgroundColor--100: #ffffff;
+  --pf-v5-global--BackgroundColor--200: #f8fafc;
+  --pf-v5-global--BackgroundColor--300: #f1f5f9;
+  --pf-v5-global--Color--100: #1e293b;
+  --pf-v5-global--Color--200: #64748b;
+  --pf-v5-global--Color--light-100: #ffffff;
+  --pf-v5-global--BorderColor--100: #cbd5e1;
+  --pf-v5-global--BorderColor--200: #94a3b8;
+  --pf-v5-global--BorderColor--300: #e2e8f0;
+  --pf-v5-global--primary-color--100: #3b82f6;
+  --pf-v5-global--primary-color--200: #2563eb;
+  --pf-v5-global--link--Color: #3b82f6;
+  --pf-v5-global--link--Color--hover: #2563eb;
+  --pf-v5-global--active-color--100: #3b82f6;
+  --pf-v5-global--disabled-color--100: #94a3b8;
+  --pf-v5-global--disabled-color--200: #e2e8f0;
+  --pf-v5-global--danger-color--100: #dc2626;
 }
 
-body {
-  background: var(--um-bg) !important;
-  color: var(--um-text) !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+/* ---- Page -------------------------------------------------------------- */
+body#keycloak-bg {
+  background: var(--um-bg);
+  color: var(--um-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-#kc-header-wrapper,
-.login-pf-header h1 {
-  color: var(--um-text) !important;
+.pf-v5-c-login {
+  padding-inline: 1rem; /* respiration sur mobile */
 }
 
-.login-pf-page-header .kc-logo-text,
-#kc-logo {
-  background-image: url('../img/logo.svg') !important;
-  background-repeat: no-repeat;
-  background-position: center;
+/* Empilement vertical : branding au-dessus, carte en dessous. */
+.pf-v5-c-login__container {
+  grid-template-areas: "header" "main" "footer";
+  grid-template-columns: minmax(0, 1fr);
+  padding-inline: 0;
+  width: 100%;
+  max-width: 26rem;
+  row-gap: 1.25rem;
+}
+
+/* ---- Branding ---------------------------------------------------------- */
+#kc-header {
+  display: flex;
+  justify-content: center;
+}
+
+#kc-header-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--um-text);
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+#kc-header-wrapper::before {
+  content: "";
   width: 3rem;
   height: 3rem;
-  margin: 0 auto 1rem;
+  background: url('../img/logo.svg') center / contain no-repeat;
 }
 
-.card-pf,
-#kc-form-wrapper {
-  background: white !important;
-  border-radius: .75rem !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .1) !important;
+/* ---- Carte ------------------------------------------------------------- */
+.pf-v5-c-login__main {
+  background: var(--um-surface);
+  border: 1px solid var(--um-border-light);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 10px 30px rgba(15, 23, 42, 0.07);
+  overflow: hidden;
 }
 
-.btn-primary,
-input[type="submit"] {
-  background-color: var(--um-primary) !important;
-  border-color: var(--um-primary) !important;
+/* L'en-tête de carte est une grille : par défaut le titre et le sélecteur de
+   langue se partagent la ligne, ce qui comprime le titre. On les empile, le
+   sélecteur au-dessus et aligné à droite. */
+.pf-v5-c-login__main-header {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 0.75rem;
 }
 
-.btn-primary:hover,
-input[type="submit"]:hover {
-  background-color: var(--um-primary-hover) !important;
-  border-color: var(--um-primary-hover) !important;
+/* grid-column est indispensable : PF5 place les utilitaires en « 2 / 3 », ce qui
+   crée une colonne implicite et laisse le titre sur la moitié de la largeur. */
+.pf-v5-c-login__main-header-utilities {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
 }
 
-.pf-c-form-control:focus,
-input[type="text"]:focus,
-input[type="password"]:focus,
-input[type="email"]:focus {
-  border-color: var(--um-primary) !important;
-  box-shadow: none !important;
+#kc-page-title {
+  grid-column: 1;
+  grid-row: 2;
+  color: var(--um-text);
+  font-size: 1.3rem;
+  font-weight: 650;
 }
 
-.alert-error,
-.pf-m-error {
-  background: var(--um-error-bg) !important;
-  color: var(--um-error-text) !important;
-  border-color: var(--um-error-border) !important;
+/* ---- Formulaire -------------------------------------------------------- */
+.pf-v5-c-form__label,
+.pf-v5-c-form__label-text {
+  color: var(--um-text);
+  font-weight: 600;
 }
 
-.link,
+.pf-v5-c-form-control {
+  width: 100%;
+  background: var(--um-surface);
+  border: 1px solid var(--um-border);
+  border-radius: 0.375rem;
+}
+
+/* PF5 dessine sa bordure basse via ::after, ce qui doublait le trait. */
+.pf-v5-c-form-control::after {
+  border-bottom: 0;
+}
+
+.pf-v5-c-form-control > input,
+.pf-v5-c-form-control > select,
+.pf-v5-c-form-control > textarea {
+  color: var(--um-text);
+  background: transparent;
+}
+
+.pf-v5-c-form-control:focus-within {
+  border-color: var(--um-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+/* Champ mot de passe : le champ et le bouton « afficher » forment un seul bloc.
+   Attention à ne pas mettre width:100% sur les items — ils se partageraient la
+   largeur à parts égales au lieu de laisser pf-m-fill absorber la place. */
+.pf-v5-c-input-group {
+  width: 100%;
+  background: transparent;
+}
+
+.pf-v5-c-input-group__item {
+  background: transparent;
+}
+
+.pf-v5-c-input-group__item.pf-m-fill {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pf-v5-c-input-group .pf-v5-c-form-control {
+  border-radius: 0.375rem 0 0 0.375rem;
+  border-right: 0;
+}
+
+.pf-v5-c-input-group .pf-v5-c-form-control:focus-within {
+  box-shadow: none;
+}
+
+.pf-v5-c-input-group .pf-v5-c-button.pf-m-control {
+  background: var(--um-surface);
+  color: var(--um-muted);
+  border: 1px solid var(--um-border);
+  border-left: 1px solid var(--um-border);
+  border-radius: 0 0.375rem 0.375rem 0;
+}
+
+.pf-v5-c-input-group .pf-v5-c-button.pf-m-control:hover {
+  color: var(--um-text);
+}
+
+/* ---- Boutons ----------------------------------------------------------- */
+.pf-v5-c-button.pf-m-primary {
+  background-color: var(--um-primary);
+  color: #fff;
+  border-radius: 0.375rem;
+  font-weight: 600;
+}
+
+.pf-v5-c-button.pf-m-primary:hover,
+.pf-v5-c-button.pf-m-primary:focus {
+  background-color: var(--um-primary-hover);
+}
+
+/* ---- Pied de carte (inscription, mot de passe oublié) ------------------ */
+.pf-v5-c-login__main-footer-band,
+#kc-registration-container,
+#kc-info-wrapper {
+  background: transparent;
+  border-top: 1px solid var(--um-border-light);
+  color: var(--um-muted);
+  text-align: center;
+}
+
 a {
-  color: var(--um-primary) !important;
+  color: var(--um-primary);
+  font-weight: 600;
+}
+
+a:hover {
+  color: var(--um-primary-hover);
+}
+
+/* ---- Messages d'erreur ------------------------------------------------- */
+.pf-v5-c-alert.pf-m-danger {
+  background: var(--um-error-bg);
+  border: 1px solid var(--um-error-border);
+  border-radius: 0.375rem;
+  color: var(--um-error);
+}
+
+.pf-v5-c-helper-text__item.pf-m-error,
+.pf-v5-c-helper-text__item.pf-m-error .pf-v5-c-helper-text__item-text,
+#input-error-client-username,
+#input-error-client-password,
+#input-error-username,
+#input-error-password {
+  color: var(--um-error);
 }

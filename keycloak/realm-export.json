@@ -1,11 +1,15 @@
 {
   "realm": "usermgmt",
+  "displayName": "UserMgmt",
   "enabled": true,
   "sslRequired": "none",
   "registrationAllowed": true,
   "registrationEmailAsUsername": true,
   "loginTheme": "usermgmt",
   "accessTokenLifespan": 3600,
+  "internationalizationEnabled": true,
+  "supportedLocales": ["fr", "en"],
+  "defaultLocale": "fr",
   "roles": {
     "realm": [
       { "name": "User", "description": "Utilisateur standard" },
