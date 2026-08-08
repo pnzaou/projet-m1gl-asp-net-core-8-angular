@@ -1,12 +1,11 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
-using Microsoft.IdentityModel.JsonWebTokens;
 using Api.Infrastructure;
 using Api.Middleware;
 using Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -41,21 +40,32 @@ try
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(opt =>
         {
-            opt.MetadataAddress = kc["InternalMetadataAddress"]!;
+            // Keycloak est joint en interne (réseau Docker) mais émet ses tokens
+            // avec l'issuer public (KC_HOSTNAME). Ce décalage est traité ici —
+            // par un retriever qui va chercher le JWKS en interne et par des
+            // ValidIssuers explicites — et non en désactivant la validation.
+            var internalMetadataAddress = kc["InternalMetadataAddress"]!;
             opt.RequireHttpsMetadata = false;
             opt.Authority = kc["PublicAuthority"];
+            opt.ConfigurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
+                internalMetadataAddress,
+                new InternalJwksConfigurationRetriever(
+                    InternalJwksConfigurationRetriever.JwksUriFromMetadataAddress(internalMetadataAddress)),
+                new HttpDocumentRetriever { RequireHttps = false });
             opt.TokenValidationParameters = new TokenValidationParameters
             {
-                ValidateIssuer = false,
-                ValidateAudience = false,
-                ValidateLifetime = false,
-                ValidateIssuerSigningKey = false,
-                RequireSignedTokens = false,
-                SignatureValidator = (token, _) =>
+                ValidateIssuer = true,
+                ValidIssuers = new[]
                 {
-                    var jwt = new JsonWebToken(token);
-                    return jwt;
+                    kc["PublicAuthority"]!,
+                    $"http://keycloak:8080/auth/realms/{kc["Realm"]}"
                 },
+                ValidateAudience = true,
+                ValidAudience = kc["Audience"],
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                RequireSignedTokens = true,
+                ClockSkew = TimeSpan.FromSeconds(30),
                 NameClaimType = "preferred_username",
                 RoleClaimType = "roles"
             };
@@ -91,7 +101,7 @@ try
                 },
                 OnAuthenticationFailed = context =>
                 {
-                    Console.WriteLine($"JWT auth failed: {context.Exception}");
+                    Log.Warning(context.Exception, "Échec de validation du JWT");
                     return Task.CompletedTask;
                 }
             };
@@ -99,13 +109,6 @@ try
 
     builder.Services.AddAuthorization();
 
-    builder.Services.AddSingleton<JwtSecurityTokenHandler>();
-
-    builder.Services.AddSingleton<Microsoft.IdentityModel.Protocols.IConfigurationManager<Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration>>(sp =>
-        new Microsoft.IdentityModel.Protocols.ConfigurationManager<Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration>(
-            kc["InternalMetadataAddress"]!,
-            new Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfigurationRetriever(),
-            new Microsoft.IdentityModel.Protocols.HttpDocumentRetriever { RequireHttps = false }));
     builder.Services.AddSingleton<IStorageService, StorageService>();
     builder.Services.AddScoped<IUserProfileService, UserProfileService>();
     builder.Services.AddHttpClient<IKeycloakAdminService, KeycloakAdminService>((sp, client) =>
