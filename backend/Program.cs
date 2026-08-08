@@ -11,6 +11,9 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Formatting.Compact;
 using Prometheus;
+using Elastic.Ingest.Elasticsearch;
+using Elastic.Ingest.Elasticsearch.DataStreams;
+using Elastic.Serilog.Sinks;
 
 Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
@@ -22,14 +25,33 @@ try
     var builder = WebApplication.CreateBuilder(args);
 
     // ── Serilog ─────────────────────────────────────────────────────────────
-    builder.Host.UseSerilog((ctx, services, lc) => lc
-        .ReadFrom.Configuration(ctx.Configuration)
-        .ReadFrom.Services(services)
-        .Enrich.FromLogContext()
-        .WriteTo.Console(new RenderedCompactJsonFormatter())
-        .WriteTo.File("logs/app-.log",
-            rollingInterval: RollingInterval.Day,
-            retainedFileCountLimit: 30));
+    builder.Host.UseSerilog((ctx, services, lc) =>
+    {
+        lc.ReadFrom.Configuration(ctx.Configuration)
+          .ReadFrom.Services(services)
+          .Enrich.FromLogContext()
+          .WriteTo.Console(new RenderedCompactJsonFormatter())
+          .WriteTo.File("logs/app-.log",
+              rollingInterval: RollingInterval.Day,
+              retainedFileCountLimit: 30);
+
+        // Sink Elasticsearch activé seulement si l'URI est configurée, pour que
+        // l'API démarre sans Elasticsearch (dev local hors Docker, tests).
+        var elasticUri = ctx.Configuration["Elasticsearch:Uri"];
+        if (!string.IsNullOrWhiteSpace(elasticUri))
+        {
+            lc.WriteTo.Elasticsearch(
+                [new Uri(elasticUri)],
+                opts =>
+                {
+                    // Flux de données « logs-usermgmt-api », convention Elastic.
+                    opts.DataStream = new DataStreamName("logs", "usermgmt", "api");
+                    // Silent : pose les templates d'index si possible et n'échoue
+                    // pas si Elasticsearch n'est pas encore prêt au démarrage.
+                    opts.BootstrapMethod = BootstrapMethod.Silent;
+                });
+        }
+    });
 
     // ── PostgreSQL + EF Core ─────────────────────────────────────────────────
     builder.Services.AddDbContext<AppDbContext>(opt =>

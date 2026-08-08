@@ -168,7 +168,7 @@
   <rect class="node-accent" x="110" y="120" width="840" height="88" rx="8"/>
   <text class="t t-title" x="530" y="146" text-anchor="middle">Gateway nginx — point d'entrée unique (:80)</text>
   <text class="t t-sub" x="530" y="167" text-anchor="middle">routage par préfixe d'URL, un seul port exposé, pas de CORS</text>
-  <text class="t t-sub" x="530" y="187" text-anchor="middle">/ · /api/ · /auth/ · /grafana/ · /minio/</text>
+  <text class="t t-sub" x="530" y="187" text-anchor="middle">/ · /api/ · /auth/ · /grafana/ · /kibana/ · /minio/</text>
 
   <!-- B, C, D : sorties de la gateway -->
   <line class="edge" x1="220" y1="208" x2="220" y2="248" marker-end="url(#a1)"/>
@@ -239,28 +239,47 @@
   <line class="edge-dash" x1="475" y1="518" x2="475" y2="316" marker-end="url(#a1)"/>
   <text class="t t-edge" x="487" y="366" style="font-size:9px">scrape /metrics · 15 s</text>
 
-  <!-- Rangée observabilité -->
+  <!-- Rangée observabilité : métriques à gauche, logs à droite -->
+  <rect class="node" x="150" y="520" width="150" height="64" rx="7"/>
+  <text class="t t-title" x="225" y="545" text-anchor="middle">grafana</text>
+  <text class="t t-sub" x="225" y="564" text-anchor="middle">2 tableaux</text>
+  <text class="t t-sub" x="225" y="577" text-anchor="middle">de bord</text>
+
   <rect class="node" x="390" y="520" width="170" height="64" rx="7"/>
   <text class="t t-title" x="475" y="545" text-anchor="middle">prometheus</text>
   <text class="t t-sub" x="475" y="564" text-anchor="middle">séries temporelles</text>
   <text class="t t-sub" x="475" y="577" text-anchor="middle">job « aspnetcore »</text>
 
-  <rect class="node" x="620" y="520" width="170" height="64" rx="7"/>
-  <text class="t t-title" x="705" y="545" text-anchor="middle">grafana</text>
-  <text class="t t-sub" x="705" y="564" text-anchor="middle">2 tableaux de bord</text>
-  <text class="t t-sub" x="705" y="577" text-anchor="middle">provisionnés</text>
+  <rect class="node" x="590" y="520" width="180" height="64" rx="7"/>
+  <text class="t t-title" x="680" y="545" text-anchor="middle">elasticsearch</text>
+  <text class="t t-sub" x="680" y="564" text-anchor="middle">logs-usermgmt-api</text>
+  <text class="t t-sub" x="680" y="577" text-anchor="middle">documents ECS</text>
+
+  <rect class="node" x="810" y="520" width="140" height="64" rx="7"/>
+  <text class="t t-title" x="880" y="545" text-anchor="middle">kibana</text>
+  <text class="t t-sub" x="880" y="564" text-anchor="middle">recherche dans</text>
+  <text class="t t-sub" x="880" y="577" text-anchor="middle">les logs</text>
 
   <!-- K : grafana -> prometheus -->
-  <line class="edge-dash" x1="618" y1="556" x2="562" y2="556" marker-end="url(#a1)"/>
-  <text class="t t-edge" x="590" y="546" text-anchor="middle">PromQL</text>
+  <line class="edge-dash" x1="302" y1="556" x2="388" y2="556" marker-end="url(#a1)"/>
+  <text class="t t-edge" x="345" y="546" text-anchor="middle">PromQL</text>
+
+  <!-- L : kibana -> elasticsearch -->
+  <line class="edge-dash" x1="808" y1="556" x2="772" y2="556" marker-end="url(#a1)"/>
+  <text class="t t-edge" x="790" y="546" text-anchor="middle">DSL</text>
+
+  <!-- M : api -> elasticsearch (Serilog), dans le couloir entre minio et keycloak-db -->
+  <line class="edge-dash" x1="655" y1="316" x2="680" y2="518" marker-end="url(#a1)"/>
+  <text class="t t-edge" x="686" y="418" style="font-size:9px">logs Serilog</text>
 </svg>
 <figcaption>
-  Les traits pleins portent le trafic applicatif, les pointillés l'observabilité. Deux points méritent
-  l'attention : l'API interroge Keycloak <em>par le réseau interne</em> (<code>keycloak:8080</code>) pour
-  récupérer les clés de signature, alors que les jetons portent l'issuer public
-  (<code>http://localhost/auth</code>) — c'est ce décalage que gère
-  <code>InternalJwksConfigurationRetriever</code>. Et Keycloak dispose de sa propre base, séparée de celle
-  de l'application : les identités et les mots de passe ne vivent jamais dans <code>usermgmt</code>.
+  Les traits pleins portent le trafic applicatif, les pointillés l'observabilité — métriques d'un côté
+  (Prometheus, Grafana), logs de l'autre (Elasticsearch, Kibana). Deux points méritent l'attention :
+  l'API interroge Keycloak <em>par le réseau interne</em> (<code>keycloak:8080</code>) pour récupérer les
+  clés de signature, alors que les jetons portent l'issuer public (<code>http://localhost/auth</code>) —
+  c'est ce décalage que gère <code>InternalJwksConfigurationRetriever</code>. Et Keycloak dispose de sa
+  propre base, séparée de celle de l'application : les identités et les mots de passe ne vivent jamais
+  dans <code>usermgmt</code>.
 </figcaption>
 </figure>
 
@@ -437,7 +456,8 @@
     <tr><td><code>/</code></td><td><code>web:80</code></td><td>l'application Angular compilée</td></tr>
     <tr><td><code>/api/</code></td><td><code>api:8080</code></td><td>l'API REST</td></tr>
     <tr><td><code>/auth/</code></td><td><code>keycloak:8080</code></td><td>la connexion et l'émission des jetons</td></tr>
-    <tr><td><code>/grafana/</code></td><td><code>grafana:3000</code></td><td>les tableaux de bord</td></tr>
+    <tr><td><code>/grafana/</code></td><td><code>grafana:3000</code></td><td>les tableaux de bord de métriques</td></tr>
+    <tr><td><code>/kibana/</code></td><td><code>kibana:5601</code></td><td>la recherche dans les logs</td></tr>
     <tr><td><code>/minio/</code></td><td><code>minio:9000</code></td><td>l'accès direct au stockage (administration)</td></tr>
   </tbody>
 </table>
