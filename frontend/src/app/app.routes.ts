@@ -1,16 +1,16 @@
 import { Routes } from '@angular/router';
-import { authGuard, guestGuard, adminGuard } from './core/guards/auth.guard';
+import { AuthGuard, GuestGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
   { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
   {
     path: 'auth',
-    canActivate: [guestGuard],
+    canActivate: [GuestGuard],
     loadChildren: () => import('./features/auth/auth.routes').then(m => m.AUTH_ROUTES)
   },
   {
     path: '',
-    canActivate: [authGuard],
+    canActivate: [AuthGuard],
     loadComponent: () => import('./shared/components/shell/shell.component').then(m => m.ShellComponent),
     children: [
       {
@@ -23,12 +23,14 @@ export const routes: Routes = [
       },
       {
         path: 'users',
-        canActivate: [adminGuard],
+        canActivate: [AuthGuard],
+        data: { roles: ['Admin', 'SuperAdmin'] },
         loadComponent: () => import('./features/users/users.component').then(m => m.UsersComponent)
       },
       {
         path: 'admin',
-        canActivate: [adminGuard],
+        canActivate: [AuthGuard],
+        data: { roles: ['Admin', 'SuperAdmin'] },
         loadComponent: () => import('./features/admin/admin.component').then(m => m.AdminComponent)
       },
       {
@@ -37,7 +39,8 @@ export const routes: Routes = [
       },
       {
         path: 'admin/memoires',
-        canActivate: [adminGuard],
+        canActivate: [AuthGuard],
+        data: { roles: ['Admin', 'SuperAdmin'] },
         loadComponent: () => import('./features/memoires/admin-memoires.component').then(m => m.AdminMemoiresComponent)
       },
     ]

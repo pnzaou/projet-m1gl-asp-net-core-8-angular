@@ -1,34 +1,41 @@
 using System.Security.Claims;
 using Api.DTOs;
+using Api.Extensions;
 using Api.Infrastructure;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Prometheus; 
+using Prometheus;
 
 namespace Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class UsersController(AppDbContext db, ILogger<UsersController> log) : ControllerBase
+public class UsersController(AppDbContext db, IKeycloakAdminService keycloak, ILogger<UsersController> log) : ControllerBase
 {
     private static readonly Counter AdminUsersCreated = Metrics
         .CreateCounter("admin_users_created_total", "Nombre total d'utilisateurs créés par un admin");
+
+    private Guid CurrentUserId => User.GetCurrentUserId();
+
     // ── Profil personnel ─────────────────────────────────────────────────
     [HttpGet("me")]
     public async Task<ActionResult<UserDto>> GetMe()
     {
-        var id = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var id = CurrentUserId;
         var user = await db.Users.FindAsync(id);
-        return user is null ? NotFound() : Ok(ToDto(user));
+        if (user is null) return NotFound();
+        var (role, enabled) = await keycloak.GetUserStatusAsync(id);
+        return Ok(ToDto(user, role, enabled));
     }
 
     [HttpPut("me")]
     public async Task<ActionResult<UserDto>> UpdateMe(UpdateProfileDto dto)
     {
-        var id = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var id = CurrentUserId;
         var user = await db.Users.FindAsync(id);
         if (user is null) return NotFound();
 
@@ -38,23 +45,9 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
         user.Department = dto.Department;
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
-        return Ok(ToDto(user));
-    }
 
-    [HttpPut("me/password")]
-    public async Task<IActionResult> ChangePassword(ChangePasswordDto dto)
-    {
-        var id = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        var user = await db.Users.FindAsync(id);
-        if (user is null) return NotFound();
-
-        if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
-            return BadRequest(new { message = "Mot de passe actuel incorrect" });
-
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
-        user.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
-        return NoContent();
+        var (role, enabled) = await keycloak.GetUserStatusAsync(id);
+        return Ok(ToDto(user, role, enabled));
     }
 
     // ── Admin CRUD ────────────────────────────────────────────────────────
@@ -71,13 +64,18 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
             query = query.Where(u => u.FirstName.Contains(search) ||
                 u.LastName.Contains(search) || u.Email.Contains(search));
 
-        if (!string.IsNullOrWhiteSpace(role)) query = query.Where(u => u.Role == role);
-        if (isActive.HasValue) query = query.Where(u => u.IsActive == isActive.Value);
-
         var total = await query.CountAsync();
-        var items = await query.OrderBy(u => u.LastName)
-            .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(u => ToDto(u)).ToListAsync();
+        var profiles = await query.OrderBy(u => u.LastName)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+
+        var items = new List<UserDto>();
+        foreach (var profile in profiles)
+        {
+            var (userRole, enabled) = await keycloak.GetUserStatusAsync(profile.Id);
+            if (!string.IsNullOrWhiteSpace(role) && role != userRole) continue;
+            if (isActive.HasValue && isActive.Value != enabled) continue;
+            items.Add(ToDto(profile, userRole, enabled));
+        }
 
         return Ok(new PagedResult<UserDto>(items, total, page, pageSize));
     }
@@ -87,7 +85,9 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
     public async Task<ActionResult<UserDto>> GetById(Guid id)
     {
         var user = await db.Users.FindAsync(id);
-        return user is null ? NotFound() : Ok(ToDto(user));
+        if (user is null) return NotFound();
+        var (role, enabled) = await keycloak.GetUserStatusAsync(id);
+        return Ok(ToDto(user, role, enabled));
     }
 
     [HttpPost]
@@ -97,18 +97,24 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
         if (await db.Users.AnyAsync(u => u.Email == dto.Email))
             return Conflict(new { message = "Email déjà utilisé" });
 
+        var email = dto.Email.ToLowerInvariant();
+        var userId = await keycloak.CreateUserAsync(email, dto.FirstName, dto.LastName, dto.Password, dto.Role);
+
         var user = new User
         {
-            FirstName = dto.FirstName, LastName = dto.LastName,
-            Email = dto.Email.ToLowerInvariant(),
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-            Role = dto.Role, Phone = dto.Phone, Department = dto.Department
+            Id = userId,
+            FirstName = dto.FirstName,
+            LastName = dto.LastName,
+            Email = email,
+            Phone = dto.Phone,
+            Department = dto.Department
         };
-
         db.Users.Add(user);
         await db.SaveChangesAsync();
         AdminUsersCreated.Inc();
-        return CreatedAtAction(nameof(GetById), new { id = user.Id }, ToDto(user));
+        log.LogInformation("Utilisateur créé par un admin : {Email}", user.Email);
+
+        return CreatedAtAction(nameof(GetById), new { id = user.Id }, ToDto(user, dto.Role, true));
     }
 
     [HttpPut("{id:guid}")]
@@ -125,18 +131,17 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
         user.AvatarUrl = dto.AvatarUrl;
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
-        return Ok(ToDto(user));
+
+        var (role, enabled) = await keycloak.GetUserStatusAsync(id);
+        return Ok(ToDto(user, role, enabled));
     }
 
     [HttpPatch("{id:guid}/role")]
     [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> SetRole(Guid id, SetRoleDto dto)
     {
-        var user = await db.Users.FindAsync(id);
-        if (user is null) return NotFound();
-        user.Role = dto.Role;
-        user.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+        if (!await db.Users.AnyAsync(u => u.Id == id)) return NotFound();
+        await keycloak.SetRoleAsync(id, dto.Role);
         return NoContent();
     }
 
@@ -144,11 +149,9 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
     [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> ToggleActive(Guid id)
     {
-        var user = await db.Users.FindAsync(id);
-        if (user is null) return NotFound();
-        user.IsActive = !user.IsActive;
-        user.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+        if (!await db.Users.AnyAsync(u => u.Id == id)) return NotFound();
+        var (_, enabled) = await keycloak.GetUserStatusAsync(id);
+        await keycloak.SetEnabledAsync(id, !enabled);
         return NoContent();
     }
 
@@ -158,6 +161,7 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
     {
         var user = await db.Users.FindAsync(id);
         if (user is null) return NotFound();
+        await keycloak.DeleteUserAsync(id);
         db.Users.Remove(user);
         await db.SaveChangesAsync();
         return NoContent();
@@ -167,13 +171,20 @@ public class UsersController(AppDbContext db, ILogger<UsersController> log) : Co
     [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> Stats()
     {
-        var total = await db.Users.CountAsync();
-        var active = await db.Users.CountAsync(u => u.IsActive);
-        var admins = await db.Users.CountAsync(u => u.Role == "Admin");
-        var today = await db.Users.CountAsync(u => u.CreatedAt.Date == DateTime.UtcNow.Date);
+        var profiles = await db.Users.ToListAsync();
+        var total = profiles.Count;
+        var active = 0;
+        var admins = 0;
+        foreach (var p in profiles)
+        {
+            var (role, enabled) = await keycloak.GetUserStatusAsync(p.Id);
+            if (enabled) active++;
+            if (role == "Admin") admins++;
+        }
+        var today = profiles.Count(u => u.CreatedAt.Date == DateTime.UtcNow.Date);
         return Ok(new { total, active, inactive = total - active, admins, newToday = today });
     }
 
-    private static UserDto ToDto(User u) => new(u.Id, u.FirstName, u.LastName,
-        u.Email, u.Role, u.IsActive, u.AvatarUrl, u.Phone, u.Department, u.CreatedAt);
+    private static UserDto ToDto(User u, string role, bool isActive) => new(
+        u.Id, u.FirstName, u.LastName, u.Email, role, isActive, u.AvatarUrl, u.Phone, u.Department, u.CreatedAt);
 }

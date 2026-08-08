@@ -1,0 +1,87 @@
+{
+  "id": null,
+  "uid": "usermgmt-overview",
+  "title": "UserMgmt - Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "API Up",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        { "expr": "up{job=\"aspnetcore\"}", "legendFormat": "api" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Utilisateurs créés (total)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        { "expr": "users_created_total", "legendFormat": "users_created" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Mémoires créés (total)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        { "expr": "memoires_created_total", "legendFormat": "created" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Mémoires consultés (total)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        { "expr": "memoires_viewed_total", "legendFormat": "viewed" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Mémoires - Validés / Rejetés / Supprimés",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        { "expr": "memoires_validated_total", "legendFormat": "validated" },
+        { "expr": "memoires_rejected_total", "legendFormat": "rejected" },
+        { "expr": "memoires_deleted_total", "legendFormat": "deleted" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Taux de requêtes HTTP (par seconde)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        { "expr": "sum(rate(http_request_duration_seconds_count[5m])) by (code)", "legendFormat": "{{code}}" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Durée des requêtes HTTP (p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    }
+  ]
+}

@@ -1,32 +1,34 @@
-import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
-import { inject } from '@angular/core';
-import { catchError, switchMap, throwError } from 'rxjs';
-import { AuthService } from '../services/auth.service';
+import { Injectable } from '@angular/core';
+import { HttpEvent, HttpHandler, HttpInterceptor, HttpRequest } from '@angular/common/http';
+import { KeycloakService } from 'keycloak-angular';
+import { Observable, from, switchMap } from 'rxjs';
 
-export const authInterceptor: HttpInterceptorFn = (req, next) => {
-  const auth = inject(AuthService);
-  const token = auth.getAccessToken();
+@Injectable()
+export class AuthInterceptor implements HttpInterceptor {
+  constructor(private readonly keycloak: KeycloakService) {}
 
-  const authReq = token
-    ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })
-    : req;
+  intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
+    const url = new URL(req.url, window.location.origin);
+    const isApiRequest = url.pathname.startsWith('/api');
 
-  return next(authReq).pipe(
-    catchError((err: HttpErrorResponse) => {
-      if (err.status === 401 && !req.url.includes('/auth/')) {
-        return auth.refresh().pipe(
-          switchMap(() => {
-            const newToken = auth.getAccessToken();
-            const retried = req.clone({ setHeaders: { Authorization: `Bearer ${newToken}` } });
-            return next(retried);
-          }),
-          catchError(() => {
-            auth.logout();
-            return throwError(() => err);
-          })
-        );
-      }
-      return throwError(() => err);
-    })
-  );
-};
+    if (!isApiRequest) {
+      return next.handle(req);
+    }
+
+    return from(this.keycloak.getToken()).pipe(
+      switchMap(token => {
+        if (!token) {
+          return next.handle(req);
+        }
+
+        const authReq = req.clone({
+          setHeaders: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        return next.handle(authReq);
+      })
+    );
+  }
+}

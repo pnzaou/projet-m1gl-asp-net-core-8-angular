@@ -92,6 +92,15 @@ type ReviewMode = 'valider' | 'rejeter';
                     (click)="openReview(m, 'rejeter')"
                     [disabled]="m.statut === 'Rejete'"
                   ><i class="fa-solid fa-circle-xmark"></i></button>
+                  @if (m.fileUrl) {
+                    <a
+                      class="btn-action btn-file"
+                      title="Ouvrir le PDF"
+                      [href]="getFileUrl(m, true)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    ><i class="fa-solid fa-file-pdf"></i></a>
+                  }
                   <button
                     class="btn-action btn-detail"
                     title="Détail"
@@ -141,6 +150,19 @@ type ReviewMode = 'valider' | 'rejeter';
         </div>
         @if (selected()!.description) {
           <div class="detail-full"><strong>Résumé :</strong><p>{{ selected()!.description }}</p></div>
+        }
+        @if (selected()!.fileUrl) {
+          <div class="detail-full file-actions">
+            <strong>Fichier :</strong>
+            <div class="file-links">
+              <a class="btn btn-secondary" [href]="getFileUrl(selected()!, true)" target="_blank" rel="noopener noreferrer">
+                <i class="fa-solid fa-eye"></i> Ouvrir
+              </a>
+              <a class="btn btn-secondary" [href]="getFileUrl(selected()!, false)" [download]="getFileName(selected()!.fileUrl)">
+                <i class="fa-solid fa-download"></i> Télécharger
+              </a>
+            </div>
+          </div>
         }
         @if (selected()!.statut === 'Rejete' && selected()!.noteRejet) {
           <div class="detail-full rejection">
@@ -246,11 +268,14 @@ type ReviewMode = 'valider' | 'rejeter';
     .badge-red { background: #fee2e2; color: #991b1b; }
 
     .actions { display: flex; gap: .25rem; }
-    .btn-action { background: none; border: 1px solid #e5e7eb; border-radius: .375rem; padding: .3rem .5rem; cursor: pointer; font-size: .9rem; }
+    .btn-action { background: none; border: 1px solid #e5e7eb; border-radius: .375rem; padding: .3rem .5rem; cursor: pointer; font-size: .9rem; color: #374151; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
     .btn-action:disabled { opacity: .35; cursor: not-allowed; }
     .btn-action.btn-valider:hover:not(:disabled) { background: #f0fdf4; border-color: #86efac; }
     .btn-action.btn-rejeter:hover:not(:disabled) { background: #fef2f2; border-color: #fca5a5; }
     .btn-action.btn-detail:hover { background: #eff6ff; border-color: #93c5fd; }
+    .btn-action.btn-file:hover { background: #fef3c7; border-color: #fcd34d; }
+    .file-actions { display: flex; flex-direction: column; gap: .5rem; }
+    .file-links { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .25rem; }
 
     .pagination { display: flex; align-items: center; gap: .375rem; margin-top: 1rem; flex-wrap: wrap; }
     .pagination button { width: 2rem; height: 2rem; border: 1px solid #e2e8f0; border-radius: .375rem; background: white; cursor: pointer; font-size: .85rem; }
@@ -340,6 +365,25 @@ export class AdminMemoiresComponent implements OnInit {
 
   countByStatut(s: string) {
     return this.allMemoires().filter(m => m.statut === s).length;
+  }
+
+  getFileUrl(m: Memoire, inline = true) {
+    if (!m.fileUrl) return '';
+    const url = new URL(m.fileUrl, window.location.origin);
+    url.searchParams.set('inline', inline ? 'true' : 'false');
+    return url.toString();
+  }
+
+  getFileName(fileUrl?: string | null) {
+    if (!fileUrl) return 'document.pdf';
+    try {
+      const url = new URL(fileUrl, window.location.origin);
+      const key = url.searchParams.get('key');
+      const fallback = key ? decodeURIComponent(key).split('/').pop() : '';
+      return fallback || 'document.pdf';
+    } catch {
+      return 'document.pdf';
+    }
   }
 
   openReview(m: Memoire, mode: ReviewMode) {

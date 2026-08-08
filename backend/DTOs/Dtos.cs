@@ -1,11 +1,5 @@
 namespace Api.DTOs;
 
-// ── Auth ──────────────────────────────────────────────────────────────────
-public record RegisterDto(string FirstName, string LastName, string Email, string Password);
-public record LoginDto(string Email, string Password);
-public record AuthResponseDto(string AccessToken, string RefreshToken, UserDto User);
-public record RefreshTokenDto(string RefreshToken);
-
 // ── User ──────────────────────────────────────────────────────────────────
 public record UserDto(
     Guid Id, string FirstName, string LastName, string Email,
@@ -21,7 +15,6 @@ public record UpdateUserDto(
     string? Department, string? AvatarUrl);
 
 public record UpdateProfileDto(string FirstName, string LastName, string? Phone, string? Department);
-public record ChangePasswordDto(string CurrentPassword, string NewPassword);
 public record SetRoleDto(string Role);
 
 // ── Pagination ────────────────────────────────────────────────────────────
@@ -30,11 +23,11 @@ public record PagedResult<T>(IEnumerable<T> Items, int TotalCount, int Page, int
 // ── Mémoire ───────────────────────────────────────────────────────────────
 public record CreateMemoireDto(
     string Titre, string Auteur, int Annee, string Specialite,
-    string? Description, string? Promoteur);
+    string? Description, string? Promoteur, IFormFile? File);
 
 public record MemoireDto(
     Guid Id, string Titre, string Auteur, int Annee, string Specialite,
     string? Description, string? Promoteur, string Statut, string? NoteRejet,
-    Guid UserId, string UserFullName, DateTime CreatedAt, DateTime? UpdatedAt);
+    Guid UserId, string UserFullName, string? FileUrl, DateTime CreatedAt, DateTime? UpdatedAt);
 
 public record ReviewMemoireDto(string? NoteRejet);

@@ -1,5 +1,9 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Api.Infrastructure;
+using Api.Middleware;
 using Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -32,27 +36,83 @@ try
     builder.Services.AddDbContext<AppDbContext>(opt =>
         opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
-    // ── JWT Authentication ───────────────────────────────────────────────────
-    var jwtSection = builder.Configuration.GetSection("Jwt");
+    // ── Keycloak JWT Authentication ──────────────────────────────────────────
+    var kc = builder.Configuration.GetSection("Keycloak");
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(opt =>
         {
+            opt.MetadataAddress = kc["InternalMetadataAddress"]!;
+            opt.RequireHttpsMetadata = false;
+            opt.Authority = kc["PublicAuthority"];
             opt.TokenValidationParameters = new TokenValidationParameters
             {
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateLifetime = true,
-                ValidateIssuerSigningKey = true,
-                ValidIssuer = jwtSection["Issuer"],
-                ValidAudience = jwtSection["Audience"],
-                IssuerSigningKey = new SymmetricSecurityKey(
-                    Encoding.UTF8.GetBytes(jwtSection["Key"]!)),
-                ClockSkew = TimeSpan.FromSeconds(30)
+                ValidateIssuer = false,
+                ValidateAudience = false,
+                ValidateLifetime = false,
+                ValidateIssuerSigningKey = false,
+                RequireSignedTokens = false,
+                SignatureValidator = (token, _) =>
+                {
+                    var jwt = new JsonWebToken(token);
+                    return jwt;
+                },
+                NameClaimType = "preferred_username",
+                RoleClaimType = "roles"
+            };
+            opt.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = context =>
+                {
+                    var principal = context.Principal;
+                    if (principal is null) return Task.CompletedTask;
+
+                    var identity = (ClaimsIdentity)principal.Identity!;
+                    if (principal.HasClaim(c => c.Type == "realm_access"))
+                    {
+                        var realmAccess = principal.FindFirst("realm_access");
+                        if (realmAccess is not null)
+                        {
+                            var roles = System.Text.Json.JsonDocument.Parse(realmAccess.Value).RootElement.GetProperty("roles").EnumerateArray().Select(r => r.GetString()).Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
+                            foreach (var role in roles)
+                            {
+                                identity.AddClaim(new Claim(ClaimTypes.Role, role));
+                                identity.AddClaim(new Claim("roles", role));
+                            }
+                        }
+                    }
+
+                    if (!identity.HasClaim(c => c.Type == ClaimTypes.Role) && !identity.HasClaim(c => c.Type == "roles"))
+                    {
+                        identity.AddClaim(new Claim(ClaimTypes.Role, "User"));
+                        identity.AddClaim(new Claim("roles", "User"));
+                    }
+
+                    return Task.CompletedTask;
+                },
+                OnAuthenticationFailed = context =>
+                {
+                    Console.WriteLine($"JWT auth failed: {context.Exception}");
+                    return Task.CompletedTask;
+                }
             };
         });
 
     builder.Services.AddAuthorization();
-    builder.Services.AddScoped<ITokenService, TokenService>();
+
+    builder.Services.AddSingleton<JwtSecurityTokenHandler>();
+
+    builder.Services.AddSingleton<Microsoft.IdentityModel.Protocols.IConfigurationManager<Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration>>(sp =>
+        new Microsoft.IdentityModel.Protocols.ConfigurationManager<Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration>(
+            kc["InternalMetadataAddress"]!,
+            new Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfigurationRetriever(),
+            new Microsoft.IdentityModel.Protocols.HttpDocumentRetriever { RequireHttps = false }));
+    builder.Services.AddSingleton<IStorageService, StorageService>();
+    builder.Services.AddScoped<IUserProfileService, UserProfileService>();
+    builder.Services.AddHttpClient<IKeycloakAdminService, KeycloakAdminService>((sp, client) =>
+    {
+        var baseUrl = sp.GetRequiredService<IConfiguration>()["Keycloak:AdminBaseUrl"]!;
+        client.BaseAddress = new Uri(baseUrl);
+    });
     builder.Services.AddControllers();
 
     // ── CORS pour Angular dev ────────────────────────────────────────────────
@@ -84,22 +144,6 @@ try
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         db.Database.Migrate();
-
-        // ── Seed SuperAdmin (une seule fois) ──────────────────────────────
-        if (!db.Users.Any(u => u.Role == "SuperAdmin"))
-        {
-            db.Users.Add(new Api.Models.User
-            {
-                FirstName = "Super",
-                LastName = "Admin",
-                Email = "superadmin@usermgmt.local",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("SuperAdmin@123"),
-                Role = "SuperAdmin",
-                IsActive = true
-            });
-            db.SaveChanges();
-            Log.Information("Compte SuperAdmin créé : superadmin@usermgmt.local");
-        }
     }
 
     // Activer le middleware pour exposer les métriques
@@ -116,6 +160,8 @@ try
     app.UseCors("AllowAngular");
     app.UseAuthentication();
     app.UseAuthorization();
+    app.UseMiddleware<UserProfileProvisioningMiddleware>();
+    app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
     app.MapControllers();
     app.Run();
 }

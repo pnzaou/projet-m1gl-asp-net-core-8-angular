@@ -17,7 +17,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(u => u.Email).HasMaxLength(256).IsRequired();
             e.Property(u => u.FirstName).HasMaxLength(100).IsRequired();
             e.Property(u => u.LastName).HasMaxLength(100).IsRequired();
-            e.Property(u => u.Role).HasMaxLength(50).HasDefaultValue("User");
         });
 
         mb.Entity<Memoire>(e =>

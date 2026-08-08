@@ -1,0 +1,70 @@
+:root {
+  --um-bg: #f8fafc;
+  --um-text: #1e293b;
+  --um-muted: #64748b;
+  --um-primary: #3b82f6;
+  --um-primary-hover: #2563eb;
+  --um-error-bg: #fef2f2;
+  --um-error-text: #dc2626;
+  --um-error-border: #fecaca;
+}
+
+body {
+  background: var(--um-bg) !important;
+  color: var(--um-text) !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+#kc-header-wrapper,
+.login-pf-header h1 {
+  color: var(--um-text) !important;
+}
+
+.login-pf-page-header .kc-logo-text,
+#kc-logo {
+  background-image: url('../img/logo.svg') !important;
+  background-repeat: no-repeat;
+  background-position: center;
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto 1rem;
+}
+
+.card-pf,
+#kc-form-wrapper {
+  background: white !important;
+  border-radius: .75rem !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .1) !important;
+}
+
+.btn-primary,
+input[type="submit"] {
+  background-color: var(--um-primary) !important;
+  border-color: var(--um-primary) !important;
+}
+
+.btn-primary:hover,
+input[type="submit"]:hover {
+  background-color: var(--um-primary-hover) !important;
+  border-color: var(--um-primary-hover) !important;
+}
+
+.pf-c-form-control:focus,
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus {
+  border-color: var(--um-primary) !important;
+  box-shadow: none !important;
+}
+
+.alert-error,
+.pf-m-error {
+  background: var(--um-error-bg) !important;
+  color: var(--um-error-text) !important;
+  border-color: var(--um-error-border) !important;
+}
+
+.link,
+a {
+  color: var(--um-primary) !important;
+}
