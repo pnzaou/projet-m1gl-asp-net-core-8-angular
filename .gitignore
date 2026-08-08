@@ -10,4 +10,9 @@ Thumbs.db
 # Superpowers scratch workspace
 .superpowers/
 
+# .NET temporary files
+backend/.tmp/
+.tmp/
+backend/*.log
+
 .env

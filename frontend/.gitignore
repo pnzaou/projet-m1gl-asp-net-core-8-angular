@@ -5,8 +5,10 @@ node_modules/
 dist/
 .angular/
 
-# Environnement (si vous mettez des clés dedans)
-src/environments/environment.prod.ts
+# environment.prod.ts est volontairement versionné : angular.json le référence
+# dans fileReplacements, donc sans lui aucun build ne passe (y compris celui du
+# Dockerfile). Il ne doit contenir aucun secret — tout ce qu'on met dans un
+# bundle Angular est public. Les secrets vont dans .env, côté serveur.
 
 # Cache
 .cache/
